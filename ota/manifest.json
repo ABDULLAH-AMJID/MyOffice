@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.1",
   "version_code": 10601,
-  "date": "2026-10-23T16:37:21Z",
+  "date": "2026-10-23T16:38:17Z",
   "notes": "v1.6.1 Fix Live Shared File Open/Download on Mobile + Instant Two-Way PC <-> Mobile Live Chat",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -18,8 +18,8 @@
     "bundle_size": 51028,
     "bundle_files": 5,
     "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Android.apk",
-    "apk_sha256": "2e547e088ebc1aa0b8851e3485643f8679a5b52ff07f44afff0aabe4de876c11",
-    "apk_size": 5283520
+    "apk_sha256": "df42ec5d86d64e1ef77dd0ae8194a531446d666c117c178aba0b189405923bb4",
+    "apk_size": 5291712
   },
   "windows": {
     "version": "1.6.1",
@@ -32,5 +32,5 @@
     "installer_sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
     "installer_size": 122047750
   },
-  "signature": "MEYCIQDMPDfRDaTS6/bE4hzjfARNpDd4zngdcBV/RphTMTiFmAIhALcc6SL+wDC4J/Vg53bDRnHN9h8hhl9BP4KHJNctpzuK"
+  "signature": "MEUCIBbL84yS5LJK3/9of2Etfb7SCyDNooQc3XXEvYSsptbrAiEA0su0KOBNqnoW1CecZx4677m6zSrhWOPrqCwzK1H+R/A="
 }
