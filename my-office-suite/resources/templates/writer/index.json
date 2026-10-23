@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "file": "business_letter.wpt",
+      "name": "Business Letter",
+      "category": "Letters",
+      "description": "Formal letter with company heading",
+      "thumbnail": "business_letter.png"
+    },
+    {
+      "file": "resume.wpt",
+      "name": "Resume / CV",
+      "category": "Personal",
+      "description": "Clean one-page CV",
+      "thumbnail": "resume.png"
+    },
+    {
+      "file": "meeting_minutes.wpt",
+      "name": "Meeting Minutes",
+      "category": "Business",
+      "description": "Agenda, decisions and action items",
+      "thumbnail": "meeting_minutes.png"
+    },
+    {
+      "file": "invoice.wpt",
+      "name": "Invoice",
+      "category": "Business",
+      "description": "Professional invoice layout",
+      "thumbnail": "invoice.png"
+    },
+    {
+      "file": "urdu_application.wpt",
+      "name": "درخواست (Urdu Application)",
+      "category": "Urdu",
+      "description": "Right-to-left Urdu application in Nastaliq",
+      "thumbnail": "urdu_application.png"
+    },
+    {
+      "file": "annual_report.wpt",
+      "name": "Annual Report",
+      "category": "Reports",
+      "description": "Report with summary and highlights table",
+      "thumbnail": "annual_report.png"
+    }
+  ]
+}

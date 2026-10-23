@@ -1,0 +1,74 @@
+name: Build Windows installer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --version=6.7.3 --no-progress -y  # pinned: same compiler as the release build
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Translations, icons, templates
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python tools/build_translations.py
+          python tools/make_icons.py
+          python tools/make_templates.py
+
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests
+
+      - name: PyInstaller
+        run: python -m PyInstaller installer/myoffice.spec --noconfirm --clean
+
+      # Opens a .docx/.xlsx/.pptx/.pdf with the *frozen* exe: catches modules missing from the bundle,
+      # which the source-tree tests above cannot see.
+      - name: Smoke-test the frozen app
+        run: python tools/smoke_test.py dist\MyOffice\MyOffice.exe
+
+      - name: Cache helper downloads
+        uses: actions/cache@v4
+        with:
+          path: installer/.deps-cache
+          key: deps-${{ hashFiles('tools/fetch_windows_deps.py') }}
+
+      # Tesseract runtime + OCR data + Ghostscript go *into* MyOffice_Setup.exe: the installer needs no internet.
+      - name: Stage bundled helper programs
+        run: python tools/fetch_windows_deps.py --out installer/deps
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "1.0.0" }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer\setup.iss
+          $size = (Get-Item installer\Output\MyOffice_Setup.exe).Length
+          $installed = (Get-ChildItem -Recurse dist\MyOffice, installer\deps | Measure-Object -Sum Length).Sum
+          "Installer: $([math]::Round($size/1MB,1)) MB, installed: $([math]::Round($installed/1MB,1)) MB"
+          if ($size -gt 150MB) { throw "Installer exceeds 150 MB" }
+          if ($installed -gt 500MB) { throw "Installed size exceeds 500 MB" }
+          (Get-FileHash installer\Output\MyOffice_Setup.exe -Algorithm SHA256).Hash | Out-File installer\Output\MyOffice_Setup.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyOffice_Setup
+          path: |
+            installer/Output/MyOffice_Setup.exe
+            installer/Output/MyOffice_Setup.sha256

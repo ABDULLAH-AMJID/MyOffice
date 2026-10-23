@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "file": "monthly_budget.ett",
+      "name": "Monthly Budget",
+      "category": "Personal",
+      "description": "Planned vs actual with chart",
+      "thumbnail": "monthly_budget.png"
+    },
+    {
+      "file": "invoice.ett",
+      "name": "Invoice",
+      "category": "Business",
+      "description": "Invoice with automatic totals and tax",
+      "thumbnail": "invoice.png"
+    },
+    {
+      "file": "attendance.ett",
+      "name": "Attendance Sheet",
+      "category": "Education",
+      "description": "Monthly attendance with percentages",
+      "thumbnail": "attendance.png"
+    },
+    {
+      "file": "sales_dashboard.ett",
+      "name": "Sales Dashboard",
+      "category": "Business",
+      "description": "Regional sales with line chart",
+      "thumbnail": "sales_dashboard.png"
+    },
+    {
+      "file": "gradebook.ett",
+      "name": "Gradebook",
+      "category": "Education",
+      "description": "Averages and letter grades",
+      "thumbnail": "gradebook.png"
+    }
+  ]
+}

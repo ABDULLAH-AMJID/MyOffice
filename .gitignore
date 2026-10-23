@@ -1,0 +1,18 @@
+# Never commit private signing keys, Android release keystore, or local binary installers
+.ota-secrets/
+my-office-android/keystore/
+my-office-android/local.properties
+my-office-android/.gradle/
+my-office-android/build/
+my-office-android/app/build/
+*.apk
+*.apk.idsig
+*.apk.sha256
+*.exe
+*.exe.sha256
+uploads/
+__pycache__/
+*.pyc
+.pytest_cache/
+.android/
+.gradle/

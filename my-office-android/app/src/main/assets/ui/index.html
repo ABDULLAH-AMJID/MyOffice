@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MyOffice</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Unified 1.75px Monoline Vector Icon Sprite (Zero Emojis Anywhere) -->
+  <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
+    <defs>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></symbol>
+      <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></symbol>
+      <symbol id="i-slide" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+      <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/></symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+      <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 19h2M19 14v2"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+      <symbol id="i-print" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+      <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+      <!-- Flagship Mobile Editor Formatting & Gesture Icons -->
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></symbol>
+      <symbol id="i-bold" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></symbol>
+      <symbol id="i-italic" viewBox="0 0 24 24"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></symbol>
+      <symbol id="i-underline" viewBox="0 0 24 24"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+      <symbol id="i-align" viewBox="0 0 24 24"><line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/></symbol>
+      <symbol id="i-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app-shell">
+    <!-- Clean Top App Bar (44px spacious actions, zero status-bar overlap) -->
+    <header class="topbar">
+      <div class="brand-group">
+        <div class="wordmark-mark" aria-hidden="true">M</div>
+        <div class="title-stack">
+          <div class="top-title" id="topTitle" data-i18n="screenFiles">Workspace</div>
+          <div class="top-sub" id="topSub">MyOffice Suite</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-subtle" style="min-height:44px;padding:0 12px;gap:6px;" id="btnQuickSync" aria-label="Sync now">
+          <svg class="ico ico-sm" style="color:var(--accent)"><use href="#i-sync"/></svg>
+          <span data-i18n="navSync">Sync</span>
+        </button>
+        <button class="btn btn-subtle" style="min-height:44px;padding:0 12px;gap:6px;" id="btnPrefs" aria-label="Language, Theme & Preferences">
+          <svg class="ico ico-sm"><use href="#i-globe"/></svg>
+          <span id="langBadgeLabel">EN</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Scrollable Viewport -->
+    <main class="main-view" id="mainView">
+      <!-- 1. WORKSPACE & FILES TAB -->
+      <section id="tabHome">
+        <div class="search-box">
+          <svg class="ico"><use href="#i-search"/></svg>
+          <input id="searchInput" data-i18n-placeholder="searchPlaceholder" placeholder="Search documents, sheets, PDFs..." oninput="App.onSearchInput()" />
+          <button class="search-clear hidden" id="btnSearchClear" onclick="App.clearSearch()" aria-label="Clear search">
+            <svg class="ico ico-sm"><use href="#i-close"/></svg>
+          </button>
+        </div>
+
+        <div class="quick-strip">
+          <button class="quick-action" onclick="App.createNewDoc('writer')">
+            <svg class="ico" style="color:var(--fmt-writer)"><use href="#i-doc"/></svg>
+            <span data-i18n="writer">Writer</span>
+          </button>
+          <button class="quick-action" onclick="App.createNewDoc('sheet')">
+            <svg class="ico" style="color:var(--fmt-sheet)"><use href="#i-sheet"/></svg>
+            <span data-i18n="sheets">Sheets</span>
+          </button>
+          <button class="quick-action" onclick="App.createNewDoc('slide')">
+            <svg class="ico" style="color:var(--fmt-slide)"><use href="#i-slide"/></svg>
+            <span data-i18n="slides">Slides</span>
+          </button>
+          <button class="quick-action" onclick="App.openCameraScan()">
+            <svg class="ico" style="color:var(--fmt-pdf)"><use href="#i-scan"/></svg>
+            <span data-i18n="scan">Scan</span>
+          </button>
+          <button class="quick-action" onclick="App.openFileImport()">
+            <svg class="ico" style="color:var(--fmt-photos)"><use href="#i-folder"/></svg>
+            <span data-i18n="importBtn">Import</span>
+          </button>
+        </div>
+
+        <div class="filter-tabs" id="filterRow">
+          <button class="filter-tab active" data-filter="all" onclick="App.setFilter('all', this)" data-i18n="fltAll">All</button>
+          <button class="filter-tab" data-filter="starred" onclick="App.setFilter('starred', this)" data-i18n="fltStarred">Starred</button>
+          <button class="filter-tab" data-filter="writer" onclick="App.setFilter('writer', this)">DOCX</button>
+          <button class="filter-tab" data-filter="sheet" onclick="App.setFilter('sheet', this)">XLSX</button>
+          <button class="filter-tab" data-filter="slide" onclick="App.setFilter('slide', this)">PPTX</button>
+          <button class="filter-tab" data-filter="pdf" onclick="App.setFilter('pdf', this)">PDF</button>
+          <button class="filter-tab" data-filter="photos" onclick="App.setFilter('photos', this)" data-i18n="fltPhotos">Images</button>
+          <button class="filter-tab" data-filter="vault" onclick="App.setFilter('vault', this)" data-i18n="fltVault">Vault</button>
+        </div>
+
+        <div class="sheet-group" id="fileList"></div>
+      </section>
+
+      <!-- 2. TWO-WAY PC & CLOUD SYNC TAB -->
+      <section id="tabSync" class="hidden">
+        <div class="segmented" id="syncModeSeg">
+          <button class="seg-btn active" data-mode="pc" onclick="App.setSyncMode('pc', this)" data-i18n="syncPc">PC Wi-Fi</button>
+          <button class="seg-btn" data-mode="hotspot" onclick="App.setSyncMode('hotspot', this)" data-i18n="syncHotspot">Hotspot</button>
+          <button class="seg-btn" data-mode="gmail" onclick="App.setSyncMode('gmail', this)">Gmail</button>
+          <button class="seg-btn" data-mode="router" onclick="App.setSyncMode('router', this)" data-i18n="syncRouter">Router</button>
+        </div>
+
+        <div class="panel" id="syncPanePc">
+          <h3 class="section-heading" data-i18n="pcSyncTitle">Pair & Sync with Windows PC</h3>
+          <p class="section-desc" data-i18n="pcSyncDesc">Open MyOffice on your PC (Ctrl+Alt+Y) and scan its QR code or find your PC on Wi-Fi without internet.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <button class="btn btn-primary" onclick="App.scanQrCamera()">
+              <svg class="ico ico-sm"><use href="#i-qr"/></svg>
+              <span data-i18n="scanQr">Scan PC QR</span>
+            </button>
+            <button class="btn btn-subtle" onclick="App.discoverLanPcs()">
+              <svg class="ico ico-sm"><use href="#i-wifi"/></svg>
+              <span data-i18n="findPc">Find PC</span>
+            </button>
+          </div>
+          <div id="discoveredPeersBox"></div>
+          <label class="field-label" data-i18n="lblPcUrl">PC Address or Pairing Link</label>
+          <input class="input" id="pcUrlInput" placeholder="http://192.168.1.10:8766" />
+          <label class="field-label" data-i18n="lblPin">6-Digit Pairing PIN</label>
+          <input class="input" id="pcPinInput" placeholder="123456" inputmode="numeric" />
+          <div style="display:flex;gap:8px;margin-top:14px;">
+            <button class="btn btn-primary" style="flex:1" onclick="App.pairAndSyncPcNow()">
+              <svg class="ico ico-sm"><use href="#i-sync"/></svg>
+              <span data-i18n="pairSyncNow">Pair & Sync Now</span>
+            </button>
+            <button class="btn btn-subtle" onclick="App.scanQrGallery()" aria-label="Pick QR from Gallery">
+              <svg class="ico ico-sm"><use href="#i-image"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="syncPaneHotspot">
+          <h3 class="section-heading" data-i18n="hotspotTitle">Host Sync Server on This Phone</h3>
+          <p class="section-desc" data-i18n="hotspotDesc">Turn this phone into the sync server when using Mobile Hotspot so your laptop connects directly to your phone.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button class="btn btn-primary" onclick="App.togglePhoneHost(true)" data-i18n="startServer">Start Server</button>
+            <button class="btn btn-subtle" onclick="App.togglePhoneHost(false)" data-i18n="stopServer">Stop Server</button>
+          </div>
+          <div id="phoneHostPanel" class="hidden" style="margin-top:16px;text-align:center;">
+            <div class="qr-box" id="phoneHostQr"></div>
+            <div id="phoneHostMeta" style="font-size:13.5px;margin-top:10px;font-variant-numeric:tabular-nums;"></div>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="syncPaneGmail">
+          <h3 class="section-heading" data-i18n="gmailTitle">Automatic Sync via Gmail</h3>
+          <p class="section-desc" data-i18n="gmailDesc">Syncs two-way over the internet with Desktop MyOffice using your Gmail address and a 16-character Google App Password.</p>
+          <label class="field-label">Gmail Address</label>
+          <input class="input" id="gmailAddressInput" placeholder="name@gmail.com" />
+          <label class="field-label">16-Character App Password</label>
+          <input class="input" type="password" id="gmailPassInput" placeholder="xxxx xxxx xxxx xxxx" />
+          <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.syncGmailNow()">
+            <svg class="ico ico-sm"><use href="#i-sync"/></svg>
+            <span data-i18n="syncGmailBtn">Save & Sync via Gmail</span>
+          </button>
+        </div>
+
+        <div class="panel hidden" id="syncPaneRouter">
+          <h3 class="section-heading" data-i18n="routerTitle">Wi-Fi Router USB / NAS Backup</h3>
+          <p class="section-desc" data-i18n="routerDesc">Sync directly with a USB drive plugged into your home or office Wi-Fi router over FTP.</p>
+          <label class="field-label">Router FTP URL</label>
+          <input class="input" id="ftpUrlInput" placeholder="ftp://192.168.1.1/usb/MyOffice" />
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label class="field-label">Username</label>
+              <input class="input" id="ftpUserInput" placeholder="admin" />
+            </div>
+            <div>
+              <label class="field-label">Password</label>
+              <input class="input" type="password" id="ftpPassInput" placeholder="Optional" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.syncRouterFtpNow()">
+            <svg class="ico ico-sm"><use href="#i-sync"/></svg>
+            <span data-i18n="syncRouterBtn">Sync with Router Storage</span>
+          </button>
+        </div>
+
+        <div class="panel">
+          <label class="check-row">
+            <input type="checkbox" id="chkVaultSync" />
+            <span data-i18n="optVaultSync">Encrypt remote copies with Hardware Vault (.movault)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="chkAutoSync" onchange="App.saveAutoSyncPref()" />
+            <span data-i18n="optAutoSync">Automatic background sync every 90 seconds</span>
+          </label>
+          <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:10px;font-size:13px;color:var(--ink-secondary);" id="syncReportBody">Ready to sync.</div>
+        </div>
+      </section>
+
+      <!-- 3. LIVE REAL-TIME COLLABORATION & TEAM CHAT TAB -->
+      <section id="tabCollab" class="hidden">
+        <div class="panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 class="section-heading" style="margin:0;" id="collabRoomHeader" data-i18n="collabTitle">Live Co-Editing & Chat</h3>
+            <span class="status-pill" id="collabPeersBadge">Offline</span>
+          </div>
+          <p class="section-desc" data-i18n="collabDesc">Co-edit documents in real time with Windows PC and team members over Wi-Fi or Hotspot.</p>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;">
+            <div>
+              <label class="field-label" data-i18n="yourName">Your Name</label>
+              <input class="input" id="collabUserName" placeholder="Mobile User" />
+            </div>
+            <div>
+              <label class="field-label" data-i18n="roomLink">Room Link</label>
+              <div style="display:flex;gap:6px;">
+                <input class="input" id="collabLinkInput" placeholder="ws://192.168.1.10:8765/Doc" />
+                <button class="icon-btn" style="height:46px;width:46px;flex-shrink:0;" onclick="App.scanQrCamera()" aria-label="Scan Room QR">
+                  <svg class="ico"><use href="#i-qr"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="App.joinCollabRoomNow()" data-i18n="joinRoom">Connect to Live Room</button>
+          <div id="pcLiveRoomsBox" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="panel">
+          <div class="chat-log" id="collabChatLog">
+            <div style="font-size:13px;color:var(--ink-muted);">Connect to a room above to co-edit and message in real time.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <input class="input" id="collabChatInput" placeholder="Message team..." onkeydown="if(event.key==='Enter')App.sendChatNow()" />
+            <button class="btn btn-primary" onclick="App.sendChatNow()" data-i18n="sendBtn">Send</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-subtle" style="flex:1;" onclick="App.openJoinedRoomFile()" data-i18n="openShared">Open Shared File</button>
+            <button class="btn btn-danger" onclick="App.leaveCurrentRoom()" data-i18n="leaveBtn">Disconnect</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. PDF STUDIO, HARDWARE VAULT & UTILITIES TAB -->
+      <section id="tabTools" class="hidden">
+        <div class="segmented" id="toolsCatSeg">
+          <button class="seg-btn active" onclick="App.setToolsCat('pdf', this)">PDF Studio</button>
+          <button class="seg-btn" onclick="App.setToolsCat('vault', this)" data-i18n="fltVault">Vault</button>
+          <button class="seg-btn" onclick="App.setToolsCat('util', this)" data-i18n="utilities">Utilities</button>
+        </div>
+
+        <div id="toolsPanePdf" class="action-list">
+          <button class="action-row" onclick="App.openCameraScan()"><svg class="ico" style="color:var(--fmt-pdf)"><use href="#i-scan"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tScanTitle">Scan Document with Camera</div><div class="action-row-sub" data-i18n="tScanSub">Capture page image & convert cleanly to PDF</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('images_to_pdf')"><svg class="ico" style="color:var(--fmt-photos)"><use href="#i-image"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tImgPdf">Images to PDF</div><div class="action-row-sub">Combine workspace photos into a single PDF</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('merge')"><svg class="ico" style="color:var(--fmt-pdf)"><use href="#i-layers"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tMerge">Merge PDFs</div><div class="action-row-sub">Combine multiple PDF files into one document</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('split')"><svg class="ico" style="color:var(--fmt-pdf)"><use href="#i-scissors"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tSplit">Split or Extract Pages</div><div class="action-row-sub">Extract specific page ranges into new PDFs</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('compress')"><svg class="ico" style="color:var(--fmt-pdf)"><use href="#i-pdf"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tCompress">Compress PDF</div><div class="action-row-sub">Optimize streams for smaller sharing size</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('protect')"><svg class="ico" style="color:var(--fmt-vault)"><use href="#i-lock"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tProtect">Protect PDF (AES-256)</div><div class="action-row-sub">Encrypt PDF with standard password security</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('unlock')"><svg class="ico" style="color:var(--fmt-vault)"><use href="#i-unlock"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tUnlock">Unlock Encrypted PDF</div><div class="action-row-sub">Remove password using known owner/user password</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('watermark')"><svg class="ico" style="color:var(--ink-secondary)"><use href="#i-pen"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tWatermark">Add Diagonal Watermark</div><div class="action-row-sub">Apply CONFIDENTIAL / DRAFT watermark across pages</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('stamp')"><svg class="ico" style="color:var(--ok)"><use href="#i-check"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tStamp">Apply Approval Stamp</div><div class="action-row-sub">Stamp APPROVED, PAID, or custom status banner</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('page_numbers')"><svg class="ico" style="color:var(--ink-secondary)"><use href="#i-doc"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tPageNum">Add Page Numbers</div><div class="action-row-sub">Insert clean footer numbering on every page</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('extract_text')"><svg class="ico" style="color:var(--fmt-writer)"><use href="#i-doc"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tExtract">Extract PDF Text to File</div><div class="action-row-sub">Export full text into an editable .txt document</div></div></button>
+          <button class="action-row" onclick="App.launchPdfToolModal('flatten')"><svg class="ico" style="color:var(--ink-secondary)"><use href="#i-layers"/></svg><div class="action-row-body"><div class="action-row-title" data-i18n="tFlatten">Flatten PDF Forms</div><div class="action-row-sub">Lock interactive AcroForm fields permanently</div></div></button>
+        </div>
+
+        <div id="toolsPaneVault" class="hidden">
+          <div class="panel">
+            <h3 class="section-heading">Hardware-Bound Security Vault (.movault)</h3>
+            <p class="section-desc">Bit-compatible with Windows MyOffice Vault (AES-256-GCM + Scrypt). Active Device Key: <strong id="lblVaultKeyId">—</strong></p>
+          </div>
+          <div class="action-list">
+            <button class="action-row" onclick="App.vaultEncryptPicker()"><svg class="ico" style="color:var(--fmt-vault)"><use href="#i-lock"/></svg><div class="action-row-body"><div class="action-row-title">Seal File in Vault (.movault)</div><div class="action-row-sub">Encrypt document for authorized phone & paired PC</div></div></button>
+            <button class="action-row" onclick="App.vaultDecryptPicker()"><svg class="ico" style="color:var(--fmt-vault)"><use href="#i-unlock"/></svg><div class="action-row-body"><div class="action-row-title">Unlock .movault File</div><div class="action-row-sub">Decrypt & open sealed vault archive</div></div></button>
+            <button class="action-row" onclick="App.exportVaultRecoveryKit()"><svg class="ico" style="color:var(--accent)"><use href="#i-key"/></svg><div class="action-row-body"><div class="action-row-title">Export Key Kit (.movaultkey)</div><div class="action-row-sub">Share encrypted master key to authorize your PC</div></div></button>
+            <button class="action-row" onclick="App.importVaultRecoveryKit()"><svg class="ico" style="color:var(--accent)"><use href="#i-folder"/></svg><div class="action-row-body"><div class="action-row-title">Import PC Key Kit</div><div class="action-row-sub">Authorize this phone to open PC-encrypted vaults</div></div></button>
+          </div>
+        </div>
+
+        <div id="toolsPaneUtil" class="action-list hidden">
+          <button class="action-row" onclick="App.openOtaUpdateSheet()"><svg class="ico" style="color:var(--accent)"><use href="#i-sync"/></svg><div class="action-row-body"><div class="action-row-title">GitHub Auto-Update (OTA)</div><div class="action-row-sub">Connect repo URL once — apply signed updates in &lt; 1s</div></div></button>
+          <button class="action-row" onclick="App.openTemplateGallery()"><svg class="ico" style="color:var(--accent)"><use href="#i-doc"/></svg><div class="action-row-body"><div class="action-row-title">Built-in Document Templates</div><div class="action-row-sub">Tax Invoice, Executive CV, Urdu Application, Pitch Deck</div></div></button>
+          <button class="action-row" onclick="App.qrGeneratorModal()"><svg class="ico" style="color:var(--ink)"><use href="#i-qr"/></svg><div class="action-row-body"><div class="action-row-title">QR Code Generator</div><div class="action-row-sub">Generate crisp vector QR codes offline</div></div></button>
+          <button class="action-row" onclick="App.repairDocPicker()"><svg class="ico" style="color:var(--fmt-sheet)"><use href="#i-check"/></svg><div class="action-row-body"><div class="action-row-title">Repair Office Archive</div><div class="action-row-sub">Rebuild damaged DOCX, XLSX, or PPTX packages</div></div></button>
+          <button class="action-row" onclick="App.openFileImport()"><svg class="ico" style="color:var(--fmt-photos)"><use href="#i-folder"/></svg><div class="action-row-body"><div class="action-row-title">Import from Phone or USB OTG</div><div class="action-row-sub">Copy files from Android Storage or USB drive</div></div></button>
+          <button class="action-row" onclick="App.runSelfDiagnostics()"><svg class="ico" style="color:var(--ok)"><use href="#i-check"/></svg><div class="action-row-body"><div class="action-row-title">System Self-Diagnostics</div><div class="action-row-sub">Verify OOXML, PDF, QR, Sync & Vault engines</div></div></button>
+        </div>
+      </section>
+
+      <!-- 5. DOCUMENT ASSISTANT TAB -->
+      <section id="tabAi" class="hidden">
+        <div class="panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 class="section-heading" style="margin:0;" data-i18n="aiTitle">Document Assistant</h3>
+            <button class="btn btn-compact btn-subtle" onclick="App.openAiSettingsSheet()" data-i18n="modelSettings">Model Settings</button>
+          </div>
+          <p class="section-desc" data-i18n="aiDesc">Draft, translate between English, Urdu & Hindi, or query any workspace PDF with page citations.</p>
+
+          <label class="field-label" data-i18n="groundPdf">Reference PDF (Optional Page Search)</label>
+          <select class="input" id="aiPdfSelect">
+            <option value="">General Writing & Document Task</option>
+          </select>
+
+          <label class="field-label" data-i18n="instruction">Instruction or Question</label>
+          <textarea class="input" id="aiPromptInput" rows="4" placeholder="Summarize key points, translate into Urdu, draft a business letter, explain formula..."></textarea>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn btn-compact btn-subtle" onclick="App.quickAiPrompt('Summarize clearly in bullet points:')">Summarize</button>
+            <button class="btn btn-compact btn-subtle" onclick="App.quickAiPrompt('Translate naturally into Urdu (اردو):')">Urdu</button>
+            <button class="btn btn-compact btn-subtle" onclick="App.quickAiPrompt('Translate naturally into Hindi (हिन्दी):')">Hindi</button>
+            <button class="btn btn-compact btn-subtle" onclick="App.quickAiPrompt('Rewrite in a clear executive tone:')">Refine Tone</button>
+          </div>
+
+          <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="App.askAiNow()" data-i18n="runAssistant">Run Assistant</button>
+
+          <pre id="aiAnswerBox" style="white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.6;margin:14px 0 0;background:var(--canvas);padding:14px;border-radius:10px;" class="hidden"></pre>
+        </div>
+
+        <div class="hidden">
+          <select id="aiProviderSelect">
+            <option value="ollama">Local PC Ollama (Free LAN)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="groq">Groq</option>
+            <option value="anthropic">Anthropic Claude</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+          <input id="aiModelInput" value="llama3.2" />
+          <input id="aiEndpointInput" placeholder="http://192.168.1.10:11434" />
+          <input type="password" id="aiKeyInput" />
+        </div>
+      </section>
+    </main>
+
+    <!-- Thumb-Reachable Floating New Button -->
+    <button class="fab-new" id="fabNew" onclick="App.openCreateSheet()">
+      <svg class="ico"><use href="#i-plus"/></svg>
+      <span data-i18n="newBtn">New</span>
+    </button>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-tab="home" onclick="App.switchTab('home')">
+        <svg class="ico"><use href="#i-folder"/></svg>
+        <span data-i18n="navHome">Files</span>
+      </button>
+      <button class="nav-item" data-tab="sync" onclick="App.switchTab('sync')">
+        <svg class="ico"><use href="#i-sync"/></svg>
+        <span data-i18n="navSync">Sync</span>
+      </button>
+      <button class="nav-item" data-tab="collab" onclick="App.switchTab('collab')">
+        <svg class="ico"><use href="#i-users"/></svg>
+        <span data-i18n="navCollab">Collab</span>
+      </button>
+      <button class="nav-item" data-tab="tools" onclick="App.switchTab('tools')">
+        <svg class="ico"><use href="#i-grid"/></svg>
+        <span data-i18n="navTools">Tools</span>
+      </button>
+      <button class="nav-item" data-tab="ai" onclick="App.switchTab('ai')">
+        <svg class="ico"><use href="#i-pen"/></svg>
+        <span data-i18n="navAi">Assistant</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- FULL-SCREEN DOCUMENT EDITOR OVERLAY -->
+  <div id="editorOverlay" class="editor-overlay hidden"></div>
+
+  <!-- FULL-SCREEN SLIDESHOW PRESENTER -->
+  <div id="slideshowOverlay" class="slideshow-fullscreen hidden"></div>
+
+  <!-- ERGONOMIC THUMB-ZONE BOTTOM SHEET -->
+  <div id="modalBackdrop" class="modal-backdrop hidden" onclick="if(event.target===this)App.closeModal()">
+    <div class="modal-sheet" id="modalSheet"></div>
+  </div>
+
+  <div id="toastEl" class="toast hidden"></div>
+
+  <script src="formula.js"></script>
+  <script src="gestures.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

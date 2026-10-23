@@ -1,0 +1,216 @@
+name: MyOffice Dual-Tier OTA & Cloud Binary Release Pipeline
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      build_binaries:
+        description: "Force full cloud compile of Android APK + Windows Setup EXE"
+        required: false
+        default: "false"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # TIER 1 (FAST <30s): Runs JS syntax & ECDSA signature checks on every push.
+  # Commits pushed via `ota-system/publish_release.py` serve instant signed OTA
+  # hot-patches (<50 KB Android / <700 KB Windows) directly via GitHub CDN!
+  # ---------------------------------------------------------------------------
+  verify-ota-bundles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify Android JS UI & Multi-Touch Physics Syntax
+        run: |
+          node --check my-office-android/app/src/main/assets/ui/formula.js
+          node --check my-office-android/app/src/main/assets/ui/gestures.js
+          node --check my-office-android/app/src/main/assets/ui/app.js
+
+      - name: Verify Signed OTA Manifest Cryptographic Signature & Hashes
+        run: |
+          python -m pip install --upgrade pip cryptography pytest requests
+          python -c "
+          import hashlib, json
+          from pathlib import Path
+          import sys; sys.path.insert(0, 'ota-system')
+          import publish_release
+          manifest = json.loads(Path('ota/manifest.json').read_text(encoding='utf-8'))
+          pub = Path('ota-system/ota_public_key.b64').read_text(encoding='utf-8').strip()
+          assert publish_release.verify_manifest_signature(manifest, pub), 'Invalid OTA signature!'
+          and_sha = hashlib.sha256(Path('ota/android-ui.zip').read_bytes()).hexdigest()
+          win_sha = hashlib.sha256(Path('ota/windows-patch.zip').read_bytes()).hexdigest()
+          assert and_sha == manifest['android']['bundle_sha256'], 'Android bundle hash mismatch!'
+          assert win_sha == manifest['windows']['patch_sha256'], 'Windows patch hash mismatch!'
+          print('Verified ECDSA-P256 signature + SHA-256 hashes for version:', manifest['version'])
+          "
+
+  # ---------------------------------------------------------------------------
+  # TIER 2A (CLOUD ANDROID BUILD): Compiles R8-shrunk, CJK-slimmed, aligned &
+  # release-keystore signed MyOffice_Android.apk on tags or manual dispatch.
+  # ---------------------------------------------------------------------------
+  build-android-apk:
+    needs: verify-ota-bundles
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event.inputs.build_binaries == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Decode Release Keystore
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p my-office-android/keystore
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > my-office-android/keystore/myoffice-release.jks
+          else
+            keytool -genkeypair -v \
+              -keystore my-office-android/keystore/myoffice-release.jks \
+              -alias myoffice -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "MyOfficeRelease2026!" -keypass "MyOfficeRelease2026!" \
+              -dname "CN=MyOffice Suite, O=MyOffice, C=PK"
+          fi
+
+      - name: Assemble, Slim, Align & Sign Release APK
+        run: |
+          gradle -p my-office-android \
+            -Dorg.gradle.jvmargs="-Xms512m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" \
+            assembleRelease -x lintVitalRelease
+          python3 - <<'EOF'
+          import zipfile
+          src_apk = "/var/tmp/myoffice-android-build/app/outputs/apk/release/app-release.apk"
+          slim_apk = "/tmp/app-slim.apk"
+          def should_keep(name: str) -> bool:
+              if name.startswith("META-INF/") and name.endswith((".SF", ".RSA", ".DSA", ".MF")):
+                  return False
+              if "com/tom_roush/fontbox/resources/cmap/" in name:
+                  base = name.rsplit("/", 1)[-1]
+                  return base.startswith("Identity") or base.startswith("UniJIS-UCS2-H")
+              return True
+          with zipfile.ZipFile(src_apk, "r") as zin, zipfile.ZipFile(slim_apk, "w") as zout:
+              for info in zin.infolist():
+                  if not should_keep(info.filename):
+                      continue
+                  data = zin.read(info.filename)
+                  ni = zipfile.ZipInfo(filename=info.filename, date_time=info.date_time)
+                  ni.create_system = info.create_system
+                  ni.external_attr = info.external_attr
+                  if info.filename == "resources.arsc" or info.filename.endswith((".png", ".jpg", ".webp")):
+                      zout.writestr(ni, data, compress_type=zipfile.ZIP_STORED)
+                  else:
+                      zout.writestr(ni, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+          EOF
+          BUILD_TOOLS_DIR="$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -n 1)"
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 /tmp/app-slim.apk /tmp/app-aligned.apk
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks my-office-android/keystore/myoffice-release.jks \
+            --ks-key-alias myoffice \
+            --ks-pass pass:MyOfficeRelease2026! \
+            --key-pass pass:MyOfficeRelease2026! \
+            --out MyOffice_Android.apk \
+            /tmp/app-aligned.apk
+          sha256sum MyOffice_Android.apk > MyOffice_Android.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyOffice_Android_APK
+          path: |
+            MyOffice_Android.apk
+            MyOffice_Android.apk.sha256
+
+      - name: Publish APK to GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            MyOffice_Android.apk
+            MyOffice_Android.apk.sha256
+
+  # ---------------------------------------------------------------------------
+  # TIER 2B (CLOUD WINDOWS BUILD): Runs on 4-core Windows Server VM with
+  # Python 3.11 + PyInstaller + Inno Setup 6 + real frozen EXE smoke tests!
+  # ---------------------------------------------------------------------------
+  build-windows-installer:
+    needs: verify-ota-bundles
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event.inputs.build_binaries == 'true'
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: my-office-suite
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup 6
+        run: choco install innosetup --no-progress -y
+
+      - name: Install Python Dependencies & Build Assets
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python tools/build_translations.py
+          python tools/make_icons.py
+          python tools/make_templates.py
+          python -m pytest -q tests
+
+      - name: Build Frozen Windows Executable & Smoke Test
+        run: |
+          python -m PyInstaller installer/myoffice.spec --noconfirm --clean
+          python tools/smoke_test.py dist\MyOffice\MyOffice.exe
+          python tools/fetch_windows_deps.py --out installer/deps
+
+      - name: Package Inno Setup Installer
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "1.6.0" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=$version" installer\setup.iss
+          (Get-FileHash installer\Output\MyOffice_Setup.exe -Algorithm SHA256).Hash.ToLower() | Out-File -Encoding ascii installer\Output\MyOffice_Setup.exe.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyOffice_Windows_Installer
+          path: |
+            my-office-suite/installer/Output/MyOffice_Setup.exe
+            my-office-suite/installer/Output/MyOffice_Setup.exe.sha256
+
+      - name: Publish Windows Installer to GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            my-office-suite/installer/Output/MyOffice_Setup.exe
+            my-office-suite/installer/Output/MyOffice_Setup.exe.sha256

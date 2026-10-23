@@ -1,0 +1,10 @@
+{
+  "id": "myoffice.urdu_digits",
+  "name": "Urdu Digits",
+  "version": "1.0.0",
+  "author": "MyOffice Project",
+  "description": "Spreadsheet function URDUNUM(value) shows numbers with Urdu digits (\u06f1\u06f2\u06f3); Writer button converts the digits of the document.",
+  "entry": "plugin.py",
+  "min_app_version": "1.0.0",
+  "license": "MIT"
+}

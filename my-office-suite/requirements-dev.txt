@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8.0
+pyflakes>=3.2
+pyinstaller>=6.5
+pefile>=2023.2.7       # build only: tools/fetch_windows_deps.py reads DLL import tables

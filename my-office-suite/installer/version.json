@@ -1,0 +1,15 @@
+{
+  "version": "1.4.0",
+  "date": "2026-10-22",
+  "url": "https://github.com/myoffice/myoffice/releases/download/v1.4.0/MyOffice_Setup.exe",
+  "sha256": "a849bdac32dc9c80094c9a2e8afb8ef298ec33bf13e8b01f9e20a46e1267f891",
+  "size": 117217342,
+  "android_apk_url": "https://github.com/myoffice/myoffice/releases/download/v1.4.0/MyOffice_Android.apk",
+  "android_apk_sha256": "47f40d00538fa074fb16d74f8befb8eafc18b7da907ccae7ad65f1854256db86",
+  "android_apk_size": 5252637,
+  "notes": "MyOffice 1.4.0: Full Standalone Android App (.apk) + Seamless Two-Way PC <-> Mobile Sync (Wi-Fi/Hotspot QR+PIN+UDP, Live Collaboration & Team Chat Bridge, Gmail Cloud Sync, Router/OTG MOVAULT1 Vault Key Sharing).",
+  "min_version": "1.0.0",
+  "mandatory": false,
+  "android_version": "1.4.1",
+  "android_version_code": 10401
+}

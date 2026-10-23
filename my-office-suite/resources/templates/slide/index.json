@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "file": "startup_pitch.dpt",
+      "name": "Startup Pitch",
+      "category": "Business",
+      "description": "Dark theme pitch deck with animations",
+      "thumbnail": "startup_pitch.png"
+    },
+    {
+      "file": "project_status.dpt",
+      "name": "Project Status",
+      "category": "Business",
+      "description": "Milestones, chart and next steps",
+      "thumbnail": "project_status.png"
+    },
+    {
+      "file": "lecture.dpt",
+      "name": "Lecture",
+      "category": "Education",
+      "description": "Warm theme for classes",
+      "thumbnail": "lecture.png"
+    },
+    {
+      "file": "minimal.dpt",
+      "name": "Minimal",
+      "category": "General",
+      "description": "Clean white starter deck",
+      "thumbnail": "minimal.png"
+    }
+  ]
+}

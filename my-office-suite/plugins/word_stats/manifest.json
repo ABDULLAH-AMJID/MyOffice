@@ -1,0 +1,10 @@
+{
+  "id": "myoffice.word_stats",
+  "name": "Word Statistics",
+  "version": "1.0.0",
+  "author": "MyOffice Project",
+  "description": "Adds a Writer button that reports reading time, speaking time, average sentence length and the most frequent words.",
+  "entry": "plugin.py",
+  "min_app_version": "1.0.0",
+  "license": "MIT"
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv*/
+build/
+dist/
+installer/Output/
+# staged by tools/fetch_windows_deps.py (downloaded at build time, packed into MyOffice_Setup.exe)
+installer/deps/
+installer/.deps-cache/

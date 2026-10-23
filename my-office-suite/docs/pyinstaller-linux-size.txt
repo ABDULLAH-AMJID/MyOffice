@@ -1,0 +1,31 @@
+MyOffice - PyInstaller bundle size (Linux proxy for the Windows installer)
+=========================================================================
+
+Measured 2026-10-15 on Debian 13 x86-64, Python 3.13.16, PyInstaller 6.22.3, PySide6 6.12.
+No Windows machine was available, so Inno Setup itself could not be run. The same spec
+(installer/myoffice.spec) was built on Linux instead, and the output was compressed with xz -9
+(LZMA2 with a 64 MiB dictionary), which matches Inno Setup's "Compression=lzma2/ultra64".
+
+Command:   python -m PyInstaller installer/myoffice.spec --noconfirm --distpath <dist> --workpath <work>
+Archive:   tar -cf - MyOffice | xz -9 -T1 > MyOffice.tar.xz        (246 s, single thread)
+
+                                    bytes            MiB     limit
+Installed size (one-folder dist)    436,223,992      416.0   < 500 MB   OK
+Compressed (xz -9 ~ Inno ultra64)   129,996,564      124.0   < 150 MB   OK
+
+Largest parts of _internal/ (MiB): PySide6 99, pymupdf 53, libpython 28, numpy.libs 27, pandas 22,
+python3.13 stdlib extensions 16, pillow.libs 14, numpy 14, matplotlib 14, cryptography 14, lxml 10.
+
+Expect the Windows build to be smaller: it does not bundle ICU or the libpython .so, and Qt DLLs are smaller.
+The CI workflow (.github/workflows/build-windows.yml) and installer/build_windows.bat fail if either
+limit is exceeded on Windows.
+
+Frozen-app smoke test (tools/smoke_test.py <dist>/MyOffice/MyOffice):
+  PASSED: opened smoke.docx (Urdu), smoke.xlsx (formulas), smoke.pptx and smoke.pdf headlessly; exit code 0,
+  9.0 s including the 8 s autoquit delay.
+
+History: build 1 was 724 MB, before excluding numba/llvmlite/scipy/pydantic and unused Qt modules. Build 2 was 442 MB
+(147 MiB with xz -6). Build 3 (420 MB) was MISSING 25 lazily imported app modules, including the Sheet widget, Slides
+and the PDF viewer: collect_submodules("app") ran before pathex took effect and silently returned nothing. The smoke
+test caught this. The spec now finds app modules by walking the source tree and asserts the count, and build 4
+(the numbers above) passes the smoke test.
