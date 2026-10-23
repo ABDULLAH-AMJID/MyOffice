@@ -14,42 +14,42 @@
   "update": {
     "url": "https://github.com/ABDULLAH-AMJID/MyOffice",
     "check_on_startup": true,
-    "last_check": 1792764430.7940953,
+    "last_check": 1792773526.6453812,
     "cached": {
       "schema": "myoffice-ota-v2",
-      "version": "1.6.0",
-      "version_code": 10600,
-      "date": "2026-10-23T14:06:17Z",
-      "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Slim Native Binaries",
+      "version": "1.6.1",
+      "version_code": 10601,
+      "date": "2026-10-23T16:37:21Z",
+      "notes": "v1.6.1 Fix Live Shared File Open/Download on Mobile + Instant Two-Way PC <-> Mobile Live Chat",
       "mandatory": false,
       "min_version": "1.0.0",
-      "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
+      "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
       "sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
       "size": 122047750,
       "android": {
-        "version": "1.6.0",
-        "version_code": 10600,
-        "min_native_code": 10600,
+        "version": "1.6.1",
+        "version_code": 10601,
+        "min_native_code": 10601,
         "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
-        "bundle_sha256": "e6921704bb25438ae1c3473556cd3bc76e16ef2f49f73a429c6a583d0bacc0e2",
-        "bundle_size": 49166,
+        "bundle_sha256": "e6a5cd3bf29bbbe186ced1500ef142efa87764f6ab00c2b85c4b7b0143340881",
+        "bundle_size": 51028,
         "bundle_files": 5,
-        "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Android.apk",
-        "apk_sha256": "060d3353d5c73743830b9898b9067f45e6db937b0baf153a2f3dd33e551e0248",
-        "apk_size": 5279424
+        "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Android.apk",
+        "apk_sha256": "2e547e088ebc1aa0b8851e3485643f8679a5b52ff07f44afff0aabe4de876c11",
+        "apk_size": 5283520
       },
       "windows": {
-        "version": "1.6.0",
+        "version": "1.6.1",
         "min_binary_version": "1.0.0",
         "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-        "patch_sha256": "ba343902f5c1138bedc37a30b5e9fc203f6da862ed076f0152ae4938ca47874c",
-        "patch_size": 692102,
+        "patch_sha256": "f3b86746e0937d9ba82243679ed86f6cf1ef1090552ae0734908d765ad3b05d3",
+        "patch_size": 693247,
         "patch_files": 140,
-        "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
+        "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
         "installer_sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
         "installer_size": 122047750
       },
-      "signature": "MEUCIB/rPaUvEeamWFRGhxmLJos+yyqUI12Yy56wD08pvWK1AiEAlEAI2kpQjaNP2ZiJUrOExezbKMnwJrCsv/0bNbuAk1Y="
+      "signature": "MEYCIQDMPDfRDaTS6/bE4hzjfARNpDd4zngdcBV/RphTMTiFmAIhALcc6SL+wDC4J/Vg53bDRnHN9h8hhl9BP4KHJNctpzuK"
     }
   },
   "templates": {
