@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.0",
   "version_code": 10600,
-  "date": "2026-10-23T13:44:26Z",
+  "date": "2026-10-23T13:49:29Z",
   "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Cloud CI/CD",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -32,5 +32,5 @@
     "installer_sha256": "a849bdac32dc9c80094c9a2e8afb8ef298ec33bf13e8b01f9e20a46e1267f891",
     "installer_size": 117217342
   },
-  "signature": "MEUCIFIjRFsZIUnAML3DCwnC1JXThdI40AXcpliJgkiaUBPYAiEAx7F8eIbi/Mfc8eHep3pdqPt5pwHegr7c85sGscDFtVg="
+  "signature": "MEUCIQD9JASDrRTZMOmtAIFrIU2a6sJajq0wKVmZ4l8hYehiMwIgUM3KEvwoxocO/JhfrgNklPb8fuHRsJWU6eTP15tQq5c="
 }
