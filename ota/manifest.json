@@ -2,13 +2,13 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.1",
   "version_code": 10601,
-  "date": "2026-10-23T16:40:05Z",
+  "date": "2026-10-23T16:40:46Z",
   "notes": "v1.6.1 Fix Live Shared File Open/Download on Mobile + Instant Two-Way PC <-> Mobile Live Chat",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-  "sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
-  "size": 122047750,
+  "sha256": "2df00bf42fd81f5cffaa4b20774712b71b168d407be9dac48b2011df959dd834",
+  "size": 122066588,
   "android": {
     "version": "1.6.1",
     "version_code": 10601,
@@ -29,8 +29,8 @@
     "patch_size": 693247,
     "patch_files": 140,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-    "installer_sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
-    "installer_size": 122047750
+    "installer_sha256": "2df00bf42fd81f5cffaa4b20774712b71b168d407be9dac48b2011df959dd834",
+    "installer_size": 122066588
   },
-  "signature": "MEQCICObGRZMDVlK8REulrI7hsUs87P1zVm3FSVrR3rrpOakAiAqFsq9c4jKZN2YEht8WQDbEdJOb8jy1qHguanAykzujw=="
+  "signature": "MEYCIQDBlmeL/zb7PHujCYoPNVSi53V+ZGKcW5mq5rr4Id6GdwIhAKFqbah4Ek2fdqdNjXFU4QF/Fu1KLotGH3BFQ8DK4Q3g"
 }
