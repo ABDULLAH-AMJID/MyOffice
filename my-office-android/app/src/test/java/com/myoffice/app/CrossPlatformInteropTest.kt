@@ -33,9 +33,10 @@ import java.util.concurrent.TimeUnit
 class CrossPlatformInteropTest {
 
     companion object {
-        private val pcSuiteDir: File = File("../my-office-suite").takeIf { it.isDirectory }
-            ?: File("my-office-suite").takeIf { it.isDirectory }
-            ?: File("/home/user/my-office-suite")
+        private val repoRoot: File = generateSequence(File("").absoluteFile) { it.parentFile }
+            .firstOrNull { File(it, "my-office-suite").isDirectory }
+            ?: File("/home/user")
+        private val pcSuiteDir: File = File(repoRoot, "my-office-suite")
 
         @JvmStatic
         @BeforeClass
@@ -652,7 +653,7 @@ class CrossPlatformInteropTest {
             """
 import functools, http.server, json, sys, threading
 from pathlib import Path
-sys.path.insert(0, str(Path(r"${pcSuiteDir.parentFile.absolutePath}") / "ota-system"))
+sys.path.insert(0, str(Path(r"${repoRoot.absolutePath}") / "ota-system"))
 import publish_release
 
 serve_root = Path(r"${dir.absolutePath}") / "repo"
