@@ -208,6 +208,8 @@ def build_and_sign_ota(
 
     apk_local = WORKSPACE_ROOT / "MyOffice_Android.apk"
     exe_local = WORKSPACE_ROOT / "MyOffice_Setup.exe"
+    if not exe_local.exists() and Path("/var/tmp/MyOffice_Setup.exe").exists():
+        exe_local = Path("/var/tmp/MyOffice_Setup.exe")
     prev_win = prev_manifest.get("windows") if isinstance(prev_manifest.get("windows"), dict) else {}
     prev_and = prev_manifest.get("android") if isinstance(prev_manifest.get("android"), dict) else {}
 
