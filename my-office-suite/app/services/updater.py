@@ -111,16 +111,17 @@ def _resolve_asset_url(asset_url: str, base_manifest_url: str) -> str:
     return urllib.parse.urljoin(base_manifest_url, asset_url)
 
 
-def verify_manifest_ecdsa(data: dict, pub_key_b64: str = RELEASE_PUBLIC_KEY_B64) -> bool:
+def verify_manifest_ecdsa(data: dict, pub_key_b64: str | None = None) -> bool:
     sig_b64 = data.get("signature", "")
     if not sig_b64:
         return False
+    effective_pub = pub_key_b64 or RELEASE_PUBLIC_KEY_B64
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
 
     clean = {k: v for k, v in data.items() if k != "signature"}
     canonical = json.dumps(clean, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    pub_key = serialization.load_der_public_key(base64.b64decode(pub_key_b64.strip()))
+    pub_key = serialization.load_der_public_key(base64.b64decode(effective_pub.strip()))
     assert isinstance(pub_key, ec.EllipticCurvePublicKey)
     try:
         pub_key.verify(base64.b64decode(sig_b64), canonical, ec.ECDSA(hashes.SHA256()))

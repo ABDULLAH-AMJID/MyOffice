@@ -40,7 +40,11 @@ def test_live_http_signed_ota_hotpatch_tamper_rejection_and_rollback(tmp_path, m
     ota_home = tmp_path / "client_ota"
     monkeypatch.setenv("MYOFFICE_OTA_DIR", str(ota_home))
 
-    priv_key, _pub_b64 = publish_release.ensure_signing_keypair()
+    priv_key, pub_b64 = publish_release.ensure_signing_keypair(
+        priv_path=tmp_path / "test_signing_key.pem",
+        pub_b64_path=tmp_path / "test_pub_key.b64",
+    )
+    monkeypatch.setattr(updater, "RELEASE_PUBLIC_KEY_B64", pub_b64)
 
     # Build a signed v9.9.1 delta hotpatch adding an upgraded feature constant to `app/ota_probe_mod.py`
     patch_zip = serve_dir / "windows-patch.zip"

@@ -44,14 +44,20 @@ ANDROID_UI_DIR = WORKSPACE_ROOT / "my-office-android" / "app" / "src" / "main" /
 WINDOWS_SUITE_DIR = WORKSPACE_ROOT / "my-office-suite"
 
 
-def ensure_signing_keypair() -> tuple[ec.EllipticCurvePrivateKey, str]:
+def ensure_signing_keypair(
+    priv_path: Path | None = None,
+    pub_b64_path: Path | None = None,
+) -> tuple[ec.EllipticCurvePrivateKey, str]:
     """Load existing ECDSA P-256 release signing key or create it once."""
-    SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+    p_priv = priv_path or PRIVATE_KEY_PATH
+    p_pub = pub_b64_path or PUBLIC_KEY_B64_PATH
+    p_priv.parent.mkdir(parents=True, exist_ok=True)
+    p_pub.parent.mkdir(parents=True, exist_ok=True)
     env_pem = os.environ.get("OTA_SIGNING_PRIVATE_KEY_PEM", "").strip()
-    if env_pem:
+    if env_pem and priv_path is None:
         priv = serialization.load_pem_private_key(env_pem.encode("utf-8"), password=None)
-    elif PRIVATE_KEY_PATH.exists():
-        priv = serialization.load_pem_private_key(PRIVATE_KEY_PATH.read_bytes(), password=None)
+    elif p_priv.exists():
+        priv = serialization.load_pem_private_key(p_priv.read_bytes(), password=None)
     else:
         priv = ec.generate_private_key(ec.SECP256R1())
         pem_bytes = priv.private_bytes(
@@ -59,15 +65,18 @@ def ensure_signing_keypair() -> tuple[ec.EllipticCurvePrivateKey, str]:
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         )
-        PRIVATE_KEY_PATH.write_bytes(pem_bytes)
-        os.chmod(PRIVATE_KEY_PATH, 0o600)
+        p_priv.write_bytes(pem_bytes)
+        try:
+            os.chmod(p_priv, 0o600)
+        except OSError:
+            pass
 
     spki_der = priv.public_key().public_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     pub_b64 = base64.b64encode(spki_der).decode("ascii")
-    PUBLIC_KEY_B64_PATH.write_text(pub_b64 + "\n", encoding="utf-8")
+    p_pub.write_text(pub_b64 + "\n", encoding="utf-8")
     return priv, pub_b64
 
 

@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.0",
   "version_code": 10600,
-  "date": "2026-10-23T13:35:15Z",
+  "date": "2026-10-23T13:44:26Z",
   "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Cloud CI/CD",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -18,19 +18,19 @@
     "bundle_size": 49166,
     "bundle_files": 5,
     "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Android.apk",
-    "apk_sha256": "83d8ad8605c9be6be0ad960b168118e0b2bd949a07beec212beae9d67f94509e",
+    "apk_sha256": "060d3353d5c73743830b9898b9067f45e6db937b0baf153a2f3dd33e551e0248",
     "apk_size": 5279424
   },
   "windows": {
     "version": "1.6.0",
     "min_binary_version": "1.0.0",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "a36ec1d767e453a007dc3aa1a95639b0f0c4c76e657e94f9cb1f040e8abce1b8",
-    "patch_size": 692087,
+    "patch_sha256": "ba343902f5c1138bedc37a30b5e9fc203f6da862ed076f0152ae4938ca47874c",
+    "patch_size": 692102,
     "patch_files": 140,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
     "installer_sha256": "a849bdac32dc9c80094c9a2e8afb8ef298ec33bf13e8b01f9e20a46e1267f891",
     "installer_size": 117217342
   },
-  "signature": "MEUCIG+Axq1FEx0YHmQQBaTdEk2fxXMHlOfW8nc+NqbdmhvCAiEAtH7E9t5ah4BhA7UPs4bJ0ySGyI0qMqJHDgvAVQ6SUHs="
+  "signature": "MEUCIFIjRFsZIUnAML3DCwnC1JXThdI40AXcpliJgkiaUBPYAiEAx7F8eIbi/Mfc8eHep3pdqPt5pwHegr7c85sGscDFtVg="
 }

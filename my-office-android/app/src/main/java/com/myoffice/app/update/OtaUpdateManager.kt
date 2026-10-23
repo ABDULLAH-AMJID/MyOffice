@@ -280,13 +280,18 @@ object OtaUpdateManager {
         }.getOrDefault(false)
     }
 
-    fun checkUpdate(filesDir: File, repoOrManifestUrl: String, readToken: String = ""): JSONObject {
+    fun checkUpdate(
+        filesDir: File,
+        repoOrManifestUrl: String,
+        readToken: String = "",
+        pubKeyB64: String = RELEASE_PUBLIC_KEY_B64,
+    ): JSONObject {
         val manifestUrl = resolveManifestUrl(repoOrManifestUrl)
         require(manifestUrl.isNotEmpty()) { "Enter your GitHub repository URL first (e.g. username/myoffice)." }
 
         val rawText = fetchBytes(withCacheBuster(manifestUrl), readToken).toString(Charsets.UTF_8)
         val manifest = JSONObject(rawText)
-        val signed = verifyManifestSignature(manifest)
+        val signed = verifyManifestSignature(manifest, pubKeyB64)
         require(signed) { "Rejected tampered update manifest: ECDSA signature check failed." }
 
         val curVer = activeVersionName(filesDir)

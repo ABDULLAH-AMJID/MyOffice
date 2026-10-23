@@ -650,13 +650,16 @@ class CrossPlatformInteropTest {
             """
 import functools, http.server, json, sys, threading
 from pathlib import Path
-sys.path.insert(0, "/home/user/ota-system")
+sys.path.insert(0, str(Path(r"${pcSuiteDir.parentFile.absolutePath}") / "ota-system"))
 import publish_release
 
 serve_root = Path(r"${dir.absolutePath}") / "repo"
 ota_dir = serve_root / "ota"
 ota_dir.mkdir(parents=True, exist_ok=True)
-priv, _pub = publish_release.ensure_signing_keypair()
+priv, pub = publish_release.ensure_signing_keypair(
+    priv_path=Path(r"${dir.absolutePath}") / "test_key.pem",
+    pub_b64_path=Path(r"${dir.absolutePath}") / "test_pub.b64",
+)
 
 ui_idx = serve_root / "index.html"
 ui_idx.write_text("<!doctype html><html><body>OTA_LIVE_9_8_0</body></html>", encoding="utf-8")
@@ -684,7 +687,7 @@ manifest["signature"] = publish_release.sign_manifest(manifest, priv)
 
 handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(serve_root))
 httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-print(json.dumps({"port": httpd.server_address[1]}), flush=True)
+print(json.dumps({"port": httpd.server_address[1], "pub": pub}), flush=True)
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 sys.stdin.readline()
 httpd.shutdown()
@@ -693,13 +696,15 @@ httpd.shutdown()
 
         try {
             val reader = BufferedReader(InputStreamReader(pyServer.inputStream))
-            val port = readNextJsonLine(reader).getInt("port")
+            val bootJson = readNextJsonLine(reader)
+            val port = bootJson.getInt("port")
+            val testPub = bootJson.getString("pub")
             val filesDir = File(dir, "android_files").apply { mkdirs() }
             val cacheDir = File(dir, "android_cache").apply { mkdirs() }
 
             // 1. Live check + ECDSA P-256 verification against Python-signed manifest
             val manifestUrl = "http://127.0.0.1:$port/ota/manifest.json"
-            val check = OtaUpdateManager.checkUpdate(filesDir, manifestUrl)
+            val check = OtaUpdateManager.checkUpdate(filesDir, manifestUrl, pubKeyB64 = testPub)
             assertTrue(check.getBoolean("available"))
             assertTrue(check.getBoolean("signed"))
             assertEquals("hotpatch", check.getString("mode"))
@@ -716,7 +721,7 @@ httpd.shutdown()
             // 3. Verify 1-byte manifest tamper is cryptographically rejected
             val rawManifest = JSONObject(File(dir, "repo/ota/manifest.json").readText())
             rawManifest.put("notes", "Tampered attacker payload")
-            assertEquals(false, OtaUpdateManager.verifyManifestSignature(rawManifest))
+            assertEquals(false, OtaUpdateManager.verifyManifestSignature(rawManifest, testPub))
 
             // 4. Verify automatic Boot Watchdog rollback on repeated crash
             OtaUpdateManager.writeState(
