@@ -186,6 +186,7 @@ jobs:
       - name: Install Python Dependencies, Stage Bundled OCR/PDF Helpers & Run Test Suite
         shell: pwsh
         run: |
+          $env:PATH = "C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\Strawberry\c\bin;$env:PATH"
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
           python tools/build_translations.py

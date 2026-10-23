@@ -2,8 +2,8 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.0",
   "version_code": 10600,
-  "date": "2026-10-23T13:56:52Z",
-  "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Native Windows & Android Cloud Binaries",
+  "date": "2026-10-23T13:57:45Z",
+  "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Slim Cloud Binaries",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
@@ -32,5 +32,5 @@
     "installer_sha256": "0823cbf782f43b1169d5106c06e3e4b1a8aa6cad4f3171072803ee180b1492b1",
     "installer_size": 122058139
   },
-  "signature": "MEYCIQDY2cIAoOXD2RQTxYPH6j65buBsXr2UsPHtbFKYjks0zgIhANJxGpNv0l8u+NPxcRP+tHghBUW1RJHxxHxlbAfm55+M"
+  "signature": "MEYCIQCk7BpBvyKJQDIye8ulFOTroTu+WySmr7E0oV1Xcf7rPQIhAKF4t7DKv38RixJu/UWPIASGDMghA0ixvH4kaIrS7WVe"
 }
