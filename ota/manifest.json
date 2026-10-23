@@ -2,13 +2,13 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.0",
   "version_code": 10600,
-  "date": "2026-10-23T13:57:45Z",
-  "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Slim Cloud Binaries",
+  "date": "2026-10-23T14:06:17Z",
+  "notes": "v1.6.0 Official Release — Dual-Tier Signed GitHub OTA Engine + Slim Native Binaries",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
-  "sha256": "0823cbf782f43b1169d5106c06e3e4b1a8aa6cad4f3171072803ee180b1492b1",
-  "size": 122058139,
+  "sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
+  "size": 122047750,
   "android": {
     "version": "1.6.0",
     "version_code": 10600,
@@ -29,8 +29,8 @@
     "patch_size": 692102,
     "patch_files": 140,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.0/MyOffice_Setup.exe",
-    "installer_sha256": "0823cbf782f43b1169d5106c06e3e4b1a8aa6cad4f3171072803ee180b1492b1",
-    "installer_size": 122058139
+    "installer_sha256": "a312e3db7d7e5ced3397b89015e5c38a70ef4adc4739d65c7656570b97e7e96f",
+    "installer_size": 122047750
   },
-  "signature": "MEYCIQCk7BpBvyKJQDIye8ulFOTroTu+WySmr7E0oV1Xcf7rPQIhAKF4t7DKv38RixJu/UWPIASGDMghA0ixvH4kaIrS7WVe"
+  "signature": "MEUCIB/rPaUvEeamWFRGhxmLJos+yyqUI12Yy56wD08pvWK1AiEAlEAI2kpQjaNP2ZiJUrOExezbKMnwJrCsv/0bNbuAk1Y="
 }
