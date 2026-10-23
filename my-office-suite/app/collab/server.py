@@ -50,6 +50,7 @@ class Room:
         self.shared_file_path: str | None = None
         self.shared_filename: str = ""
         self.shared_kind: str = ""
+        self._broadcasted_chat_ids: set[str] = set()
         self.persist = (persist_dir / f"{_safe(name)}.ydoc") if persist_dir else None
         self.dirty = False
         if self.persist and self.persist.exists():
@@ -59,11 +60,22 @@ class Room:
                 log.warning("Could not restore room %s: %s", name, exc)
 
     def chat_list(self) -> list[dict]:
+        out: list[dict] = []
         try:
             arr = self.doc.get("chat", type=Array)
-            return [dict(item) if isinstance(item, dict) else item for item in arr]
+            for item in arr:
+                if isinstance(item, dict):
+                    out.append(dict(item))
+                elif isinstance(item, str):
+                    try:
+                        parsed = json.loads(item)
+                        if isinstance(parsed, dict):
+                            out.append(parsed)
+                    except Exception:
+                        continue
         except Exception:
-            return []
+            pass
+        return out
 
     def writer_text(self) -> str:
         try:
@@ -74,14 +86,37 @@ class Room:
     def sheets_snapshot(self) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {}
         try:
+            # 1. Include PC SheetBinding CRDT map ("Sheet1!A1" -> value)
+            croot = self.doc.get("cells", type=Map)
+            for full_key in list(croot.keys()):
+                val = croot.get(full_key)
+                sname, sep, ref = str(full_key).rpartition("!")
+                sheet_key = sname if sep and sname else "Sheet1"
+                cell_key = ref if sep else str(full_key)
+                if cell_key:
+                    out.setdefault(sheet_key, {})[cell_key] = "" if val is None else str(val)
+        except Exception:
+            pass
+        try:
+            # 2. Include nested mobile map ("sheets" -> sname -> A1 -> value)
             sroot = self.doc.get("sheets", type=Map)
             for sname in list(sroot.keys()):
                 sub = sroot.get(sname)
                 if sub is not None and hasattr(sub, "items"):
-                    out[str(sname)] = {str(k): str(v) for k, v in sub.items()}
+                    bucket = out.setdefault(str(sname), {})
+                    for k, v in sub.items():
+                        bucket[str(k)] = str(v)
         except Exception:
             pass
         return out
+
+    @staticmethod
+    def _ensure_ext(fname: str, kind: str) -> str:
+        ext_map = {"writer": ".docx", "sheet": ".xlsx", "slide": ".pptx", "pdf": ".pdf", "photos": ".png"}
+        clean = (fname or "").strip() or "Shared_Document"
+        if not os.path.splitext(clean)[1] and kind in ext_map:
+            return clean + ext_map[kind]
+        return clean
 
     def full_mobile_state(self) -> dict:
         return {
@@ -99,8 +134,8 @@ class Room:
         size = 0
         try:
             fmap = self.doc.get("file", type=Map)
-            fname = str(fmap.get("name") or fname or f"{self.name}.bin")
             kind = str(fmap.get("kind") or kind or "writer")
+            fname = str(fmap.get("name") or fname or self.name)
             b64 = fmap.get("b64") or ""
             if b64:
                 size = (len(b64) * 3) // 4
@@ -112,9 +147,10 @@ class Room:
                 fname = fname or os.path.basename(self.shared_file_path)
             except OSError:
                 pass
+        fname = self._ensure_ext(fname or self.name, kind or "any")
         return {
             "room": self.name,
-            "filename": fname or f"{self.name}",
+            "filename": fname,
             "ext": os.path.splitext(fname)[1].lower(),
             "kind": kind or "any",
             "size": size,
@@ -122,17 +158,20 @@ class Room:
         }
 
     def raw_file_bytes(self) -> tuple[bytes, str]:
+        kind = self.shared_kind or "any"
         try:
             fmap = self.doc.get("file", type=Map)
             b64 = fmap.get("b64")
-            fname = str(fmap.get("name") or self.shared_filename or f"{self.name}.bin")
+            kind = str(fmap.get("kind") or kind)
+            fname = self._ensure_ext(str(fmap.get("name") or self.shared_filename or self.name), kind)
             if b64:
                 return base64.b64decode(b64.encode("ascii")), fname
         except Exception:
             pass
         if self.shared_file_path and os.path.isfile(self.shared_file_path):
-            return Path(self.shared_file_path).read_bytes(), (self.shared_filename or os.path.basename(self.shared_file_path))
-        return b"", self.shared_filename or self.name
+            fn = self._ensure_ext(self.shared_filename or os.path.basename(self.shared_file_path), kind)
+            return Path(self.shared_file_path).read_bytes(), fn
+        return b"", self._ensure_ext(self.shared_filename or self.name, kind)
 
     def save(self):
         if self.persist and self.dirty:
@@ -380,6 +419,8 @@ class CollabServer:
             val = str(msg.get("value") if msg.get("value") is not None else "")
             if cell_ref:
                 sroot = room.doc.get("sheets", type=Map)
+                croot = room.doc.get("cells", type=Map)
+                full_key = f"{sname}!{cell_ref}"
                 with room.doc.transaction():
                     sub = sroot.get(sname)
                     if sub is None:
@@ -390,8 +431,11 @@ class CollabServer:
                             del sub[cell_ref]
                         except KeyError:
                             pass
+                        if full_key in croot:
+                            del croot[full_key]
                     else:
                         sub[cell_ref] = val
+                        croot[full_key] = val
                 changed = True
                 mobile_event = {"type": "sheet_push", "sheet": sname, "cell": cell_ref, "value": val}
 
@@ -423,7 +467,13 @@ class CollabServer:
             return
         kind = message[0]
         if kind == SYNC:
-            sub = message[1] if len(message) > 1 else -1
+            prev_chats = {m.get("id") for m in room.chat_list() if isinstance(m, dict) and m.get("id")}
+            prev_sha = ""
+            try:
+                prev_sha = str(room.doc.get("file", type=Map).get("sha") or "")
+            except Exception:
+                pass
+            sub = message[1] if len(data := message) > 1 else -1
             reply = pycrdt.handle_sync_message(message[1:], room.doc)
             if reply is not None:
                 await ws.send(reply)
@@ -432,6 +482,17 @@ class CollabServer:
                 fwd = message if sub == UPDATE else bytes([SYNC, UPDATE]) + message[2:]
                 await self.broadcast(room, fwd, exclude=ws)
                 if room.mobile_clients:
+                    for m in room.chat_list():
+                        mid = m.get("id")
+                        if mid and mid not in prev_chats:
+                            room._broadcasted_chat_ids.add(mid)
+                            await self.broadcast_mobile(room, {"type": "chat_push", "message": m})
+                    try:
+                        new_sha = str(room.doc.get("file", type=Map).get("sha") or "")
+                        if new_sha and new_sha != prev_sha:
+                            await self.broadcast_mobile(room, {"type": "file_push_notify", "meta": room.metadata()})
+                    except Exception:
+                        pass
                     await self.broadcast_mobile(room, room.full_mobile_state())
         elif kind == AWARENESS:
             room.awareness[ws] = message

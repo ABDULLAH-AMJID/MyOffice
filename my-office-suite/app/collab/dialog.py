@@ -244,17 +244,22 @@ class CollabDialog(QDialog):
         return srv, user
 
     def _share_doc_widget(self, doc) -> CollabSession:
+        from app.collab.binding import extract_doc_snapshot_bytes
+
         srv, user = self._ensure_server_and_user()
         existing: CollabSession | None = getattr(doc, "_collab_session", None)
         if existing is not None:
             return existing
         room_slug = _make_room_slug(doc)
         path = getattr(doc, "path", None)
+        path_str = str(path) if path else ""
+        raw_bytes, fname, kind = extract_doc_snapshot_bytes(doc)
         srv.register_shared_file(
             room_slug,
-            file_path=path if path and os.path.isfile(path) else None,
-            filename=doc.display_name(),
-            kind=getattr(doc, "kind", "any"),
+            file_path=path_str if path_str and os.path.isfile(path_str) else None,
+            filename=fname,
+            kind=kind,
+            raw_bytes=raw_bytes or None,
         )
         sess = attach_session_to_doc(
             self.main,

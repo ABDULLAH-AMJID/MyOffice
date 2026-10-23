@@ -167,3 +167,98 @@ def test_v140_version_registry_shortcut_and_15_check_selftest(tmp_path: Path):
     report = rep_file.read_text(encoding="utf-8")
     assert rc == 0, report
     assert "[ OK ] Mobile app sync (PC <-> Android)" in report
+
+
+def test_v161_live_pc_mobile_shared_file_and_two_way_chat(tmp_path: Path, monkeypatch):
+    """End-to-end regression proof for BOTH v1.6.1 bug fixes:
+      1. Unsaved / active PC tab shared via `extract_doc_snapshot_bytes` serves a non-empty valid `.docx`
+         immediately at `/api/rooms/<room>/file` and `/api/rooms/<room>/meta` (with `.docx` extension).
+      2. Messages sent from Mobile -> PC AND messages sent from PC (`CollabSession.send_chat`) -> Mobile
+         BOTH arrive immediately as structured JSON objects (`id`, `sender`, `text`, `ts`) with zero drops!
+    """
+    import urllib.request
+    import zipfile
+    from PySide6.QtWidgets import QApplication
+    from app.collab.binding import CollabSession, extract_doc_snapshot_bytes
+    from app.collab.server import CollabServer
+    from app.writer.widget import WriterDocument
+
+    monkeypatch.setenv("MYOFFICE_CONFIG_DIR", str(tmp_path / "cfg"))
+    qapp = QApplication.instance() or QApplication([])
+
+    srv = CollabServer("127.0.0.1", 0, persist=False)
+    srv.start()
+    try:
+        doc = WriterDocument()
+        doc.editor.document().setPlainText("Shared from Windows PC to Mobile")
+        raw_bytes, fname, kind = extract_doc_snapshot_bytes(doc)
+        assert fname.endswith(".docx") and len(raw_bytes) > 500
+        srv.register_shared_file("pc-live-room", file_path=None, filename=fname, kind=kind, raw_bytes=raw_bytes)
+
+        pc_sess = CollabSession(
+            doc,
+            f"ws://127.0.0.1:{srv.port}",
+            "pc-live-room",
+            user="PC Host",
+            http_base=f"http://127.0.0.1:{srv.port}",
+        )
+        pc_sess.publish_initial_file_snapshot()
+        pc_sess.start()
+
+        deadline = time.time() + 4.0
+        while time.time() < deadline and not pc_sess._synced:
+            qapp.processEvents()
+            time.sleep(0.03)
+
+        # 1. Verify Mobile HTTP meta + file endpoints serve valid .docx immediately!
+        meta = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/api/rooms/pc-live-room/meta").read())
+        assert meta["filename"].endswith(".docx") and meta["size"] > 500
+        dl_bytes = urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/api/rooms/pc-live-room/file").read()
+        dl_file = tmp_path / meta["filename"]
+        dl_file.write_bytes(dl_bytes)
+        with zipfile.ZipFile(dl_file, "r") as zf:
+            assert "word/document.xml" in zf.namelist()
+
+        # 2. Verify Mobile <-> PC TWO-WAY live chat over WebSocket!
+        with ws_client.connect(f"ws://127.0.0.1:{srv.port}/pc-live-room?client=mobile") as mob:
+            init_msg = json.loads(mob.recv(timeout=3.0))
+            assert init_msg["type"] == "state"
+
+            # Direction A: Mobile -> PC
+            mob.send(json.dumps({"type": "chat_send", "sender": "Mobile", "text": "Hello PC from Mobile!"}))
+            deadline = time.time() + 3.0
+            while time.time() < deadline and not any(m.get("text") == "Hello PC from Mobile!" for m in pc_sess.chat_history()):
+                qapp.processEvents()
+                time.sleep(0.03)
+            assert any(m.get("text") == "Hello PC from Mobile!" for m in pc_sess.chat_history())
+
+            # Drain mobile echo frame if any
+            try:
+                while True:
+                    mob.recv(timeout=0.05)
+            except TimeoutError:
+                pass
+
+            # Direction B: PC -> Mobile (previously dropped when ychat held stringified JSON!)
+            pc_sess.send_chat("Hello Mobile from Windows PC!")
+            got_pc_msg_on_mobile = False
+            deadline = time.time() + 3.0
+            while time.time() < deadline and not got_pc_msg_on_mobile:
+                qapp.processEvents()
+                try:
+                    frame = json.loads(mob.recv(timeout=0.08))
+                    if frame.get("type") == "chat_push" and isinstance(frame.get("message"), dict):
+                        if frame["message"].get("text") == "Hello Mobile from Windows PC!":
+                            got_pc_msg_on_mobile = True
+                    elif frame.get("type") == "state":
+                        if any(isinstance(x, dict) and x.get("text") == "Hello Mobile from Windows PC!" for x in frame.get("chat", [])):
+                            got_pc_msg_on_mobile = True
+                except TimeoutError:
+                    continue
+            assert got_pc_msg_on_mobile, "PC -> Mobile chat message did NOT arrive on Mobile!"
+
+        pc_sess.stop()
+        doc.set_modified(False)
+    finally:
+        srv.stop()
+

@@ -39,6 +39,54 @@ log = logging.getLogger(__name__)
 PALETTE = ["#2563EB", "#DC2626", "#16A34A", "#D97706", "#9333EA", "#0891B2", "#BE185D", "#4F46E5"]
 
 
+def extract_doc_snapshot_bytes(doc_widget) -> tuple[bytes, str, str]:
+    """Capture live bytes + normalized filename (with real extension) + kind for ANY open tab."""
+    from pathlib import Path
+
+    path = getattr(doc_widget, "path", None)
+    path_str = str(path) if path else ""
+    fname = getattr(doc_widget, "display_name", lambda: "Document")()
+    kind = getattr(doc_widget, "kind", "any")
+    ext_map = {"writer": ".docx", "sheet": ".xlsx", "slide": ".pptx", "pdf": ".pdf", "photos": ".png"}
+    ext = os.path.splitext(fname)[1] or ext_map.get(kind, ".bin")
+    if not os.path.splitext(fname)[1]:
+        fname = fname + ext
+
+    raw = b""
+    save_fn = getattr(doc_widget, "save_to", None) or getattr(doc_widget, "save_file", None)
+    if callable(save_fn):
+        prev_path = getattr(doc_widget, "path", None)
+        prev_mod = doc_widget.is_modified() if hasattr(doc_widget, "is_modified") else None
+        fd, tmp = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        try:
+            save_fn(tmp)
+            raw = Path(tmp).read_bytes()
+        except Exception:
+            raw = b""
+        finally:
+            try:
+                doc_widget.path = prev_path
+            except Exception:
+                pass
+            if prev_mod is not None and hasattr(doc_widget, "set_modified"):
+                try:
+                    doc_widget.set_modified(prev_mod)
+                except Exception:
+                    pass
+            if os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+    if not raw and path_str and os.path.isfile(path_str):
+        try:
+            raw = Path(path_str).read_bytes()
+        except Exception:
+            raw = b""
+    return raw, fname, kind
+
+
 # ============================================================================= UTF-16 <-> code-point helpers
 def utf16_len(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
@@ -437,6 +485,14 @@ class CollabSession(QObject):
 
         self._doc_unsub = self.ydoc.observe(self._on_ydoc_update)
         self._chat_unsub = self.ychat.observe(self._on_chat_event)
+        self._snapshot_timer = QTimer(self)
+        self._snapshot_timer.setSingleShot(True)
+        self._snapshot_timer.setInterval(750)
+        self._snapshot_timer.timeout.connect(lambda: self.publish_initial_file_snapshot(force=True))
+        if kind == "writer":
+            doc_widget.editor.document().contentsChange.connect(lambda *_: self._snapshot_timer.start())
+        elif kind == "sheet":
+            doc_widget.cellsEdited.connect(lambda *_: self._snapshot_timer.start())
 
     @property
     def full_ws_url(self) -> str:
@@ -465,33 +521,18 @@ class CollabSession(QObject):
         )
         return {"http": browser_url, "myoffice": app_uri, "ws": ws_url, "host": host, "port": str(port)}
 
-    def publish_initial_file_snapshot(self):
-        """Embed initial binary snapshot of ANY file format inside `Y.Map('file')` so LAN joiners auto-download it."""
+    def publish_initial_file_snapshot(self, force: bool = False):
+        """Embed binary snapshot of ANY file format inside `Y.Map('file')` so LAN joiners auto-download it."""
         try:
-            path = getattr(self.doc_widget, "path", None)
-            fname = getattr(self.doc_widget, "display_name", lambda: self.room)()
-            kind = getattr(self.doc_widget, "kind", "any")
-            raw = b""
-            if path and os.path.isfile(path):
-                raw = Path(path).read_bytes()
-            elif hasattr(self.doc_widget, "save_file"):
-                ext_map = {"writer": ".docx", "sheet": ".xlsx", "slide": ".pptx", "pdf": ".pdf", "photos": ".png"}
-                ext = os.path.splitext(fname)[1] or ext_map.get(kind, ".bin")
-                fd, tmp = tempfile.mkstemp(suffix=ext)
-                os.close(fd)
-                try:
-                    self.doc_widget.save_file(tmp)
-                    raw = Path(tmp).read_bytes()
-                    if not os.path.splitext(fname)[1]:
-                        fname = fname + ext
-                finally:
-                    if os.path.exists(tmp):
-                        os.unlink(tmp)
-            if raw and len(raw) <= 48 * 1024 * 1024 and not self.yfile.get("b64"):
+            raw, fname, kind = extract_doc_snapshot_bytes(self.doc_widget)
+            if raw and len(raw) <= 48 * 1024 * 1024 and (force or not self.yfile.get("b64")):
+                new_sha = hashlib.sha256(raw).hexdigest()
+                if self.yfile.get("sha") == new_sha:
+                    return
                 with self.ydoc.transaction():
                     self.yfile["name"] = fname
                     self.yfile["kind"] = kind
-                    self.yfile["sha"] = hashlib.sha256(raw).hexdigest()
+                    self.yfile["sha"] = new_sha
                     self.yfile["b64"] = base64.b64encode(raw).decode("ascii")
                     self.yfile["ts"] = time.time()
         except Exception as exc:

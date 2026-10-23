@@ -98,14 +98,18 @@ jobs:
               -dname "CN=MyOffice Suite, O=MyOffice, C=PK"
           fi
 
-      - name: Assemble, Slim, Align & Sign Release APK
+      - name: Run Android Cross-Platform JUnit Suite & Assemble Slim Release APK
         run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r my-office-suite/requirements-dev.txt
           SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_HOME="$SDK_DIR"
           export ANDROID_SDK_ROOT="$SDK_DIR"
+          export QT_QPA_PLATFORM="offscreen"
+          export PYTHONPATH="$PWD/my-office-suite"
           gradle -p my-office-android \
             -Dorg.gradle.jvmargs="-Xms512m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" \
-            assembleRelease -x lintVitalRelease
+            testDebugUnitTest assembleRelease -x lintVitalRelease
           python3 - <<'EOF'
           import os, zipfile
           candidates = [

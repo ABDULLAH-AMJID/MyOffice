@@ -737,4 +737,130 @@ httpd.shutdown()
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `8 live Windows CollabSession to Android MobileCollabManager unsaved DOCX shared file download and two-way PC-to-Mobile AND Mobile-to-PC chat`() {
+        val dir = Files.createTempDirectory("mo_live_collab_fix").toFile()
+        val receivedMobileEvents = java.util.Collections.synchronizedList(mutableListOf<JSONObject>())
+
+        // Spawn REAL Qt/PySide6 Windows CollabSession + CollabServer hosting an unsaved WriterDocument!
+        val pyHost = ProcessBuilder(
+            "python3", "-u", "-c",
+            """
+import json, os, sys, time
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["MYOFFICE_CONFIG_DIR"] = r"${File(dir, "pc_cfg").absolutePath}"
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+from app.writer.widget import WriterDocument
+from app.collab.server import CollabServer
+from app.collab.binding import CollabSession, extract_doc_snapshot_bytes
+
+qapp = QApplication([])
+srv = CollabServer("127.0.0.1", 0, persist=False)
+srv.start()
+
+doc = WriterDocument()
+doc.editor.document().setPlainText("Live Contract Draft from Windows PC")
+raw_bytes, fname, kind = extract_doc_snapshot_bytes(doc)
+srv.register_shared_file("draft-room", file_path=None, filename=fname, kind=kind, raw_bytes=raw_bytes)
+
+sess = CollabSession(doc, f"ws://127.0.0.1:{srv.port}", "draft-room", user="Abdullah PC", http_base=f"http://127.0.0.1:{srv.port}")
+sess.publish_initial_file_snapshot()
+sess.start()
+
+# Wait until PC session is connected, then send an initial chat message BEFORE mobile joins!
+deadline = time.time() + 4.0
+while time.time() < deadline and not sess._synced:
+    qapp.processEvents()
+    time.sleep(0.03)
+
+sess.send_chat("Salaam from Windows PC before join!")
+for _ in range(10):
+    qapp.processEvents()
+    time.sleep(0.03)
+
+qr_http_link = sess.share_links("127.0.0.1")["http"]
+print(json.dumps({"qr_http": qr_http_link, "fname": fname}), flush=True)
+
+for line in sys.stdin:
+    cmd = line.strip()
+    if cmd == "SEND_PC_MSG":
+        sess.send_chat("Live reply from Windows PC to Mobile!")
+        for _ in range(20):
+            qapp.processEvents()
+            time.sleep(0.03)
+        print(json.dumps({"pc_chat": [m["text"] for m in sess.chat_history()]}), flush=True)
+    elif cmd == "CHECK_PC_CHAT":
+        for _ in range(25):
+            qapp.processEvents()
+            time.sleep(0.03)
+        print(json.dumps({"pc_chat": [m["text"] for m in sess.chat_history()]}), flush=True)
+    elif cmd == "STOP":
+        break
+
+sess.stop()
+srv.stop()
+            """.trimIndent()
+        ).directory(pcSuiteDir).redirectErrorStream(true).start()
+
+        try {
+            val reader = BufferedReader(InputStreamReader(pyHost.inputStream))
+            val boot = readNextJsonLine(reader)
+            val qrHttpLink = boot.getString("qr_http") // Exact QR URL format: http://127.0.0.1:<port>/f/draft-room
+
+            val collabDir = File(dir, "Collaborations")
+            val mgr = MobileCollabManager(collabDir) { _, evt -> receivedMobileEvents.add(evt) }
+
+            // 1. Mobile joins using exact HTTP QR link (`http://127.0.0.1:<port>/f/draft-room`)
+            val joinRes = mgr.joinRoom(qrHttpLink, userName = "Abdullah Mobile")
+            assertEquals("draft-room", joinRes.getString("room"))
+            assertTrue("Expected non-empty relPath with .docx extension", joinRes.getString("relPath").endsWith(".docx"))
+            val downloadedDocx = File(joinRes.getString("localPath"))
+            assertTrue("Shared DOCX file must exist and have non-zero size on Mobile", downloadedDocx.isFile && downloadedDocx.length() > 500)
+
+            // Verify Mobile also opens the downloaded shared DOCX cleanly via OoxmlMobileEngine!
+            val openedDoc = com.myoffice.app.ooxml.OoxmlMobileEngine.openDocument(downloadedDocx, "Collaborations")
+            assertEquals("writer", openedDoc.getString("kind"))
+            assertTrue(openedDoc.getString("html").contains("Live Contract Draft from Windows PC"))
+
+            // 2. Verify initial PC chat message is already visible in joinRes.chat!
+            val initialChats = (0 until joinRes.getJSONArray("chat").length())
+                .map { joinRes.getJSONArray("chat").getJSONObject(it).getString("text") }
+            assertTrue("Expected initial PC message on Mobile", initialChats.contains("Salaam from Windows PC before join!"))
+
+            // 3. Mobile -> PC chat message
+            assertTrue(mgr.sendChat("draft-room", "Salaam from Mobile to PC!"))
+            pyHost.outputStream.write("CHECK_PC_CHAT\n".toByteArray())
+            pyHost.outputStream.flush()
+            val pcCheck = readNextJsonLine(reader).getJSONArray("pc_chat")
+            val pcTexts = (0 until pcCheck.length()).map { pcCheck.getString(it) }
+            assertTrue("PC must receive Mobile chat message", pcTexts.contains("Salaam from Mobile to PC!"))
+
+            // 4. PC -> Mobile live chat message (THE EXACT BUG REPORTED BY USER!)
+            pyHost.outputStream.write("SEND_PC_MSG\n".toByteArray())
+            pyHost.outputStream.flush()
+            readNextJsonLine(reader)
+
+            // Wait up to 2.5s for live WebSocket push on Mobile
+            val deadline = System.currentTimeMillis() + 2500
+            var foundPcLiveReply = false
+            while (System.currentTimeMillis() < deadline && !foundPcLiveReply) {
+                foundPcLiveReply = synchronized(receivedMobileEvents) {
+                    receivedMobileEvents.any {
+                        it.optString("type") == "chat_push" &&
+                            it.optJSONObject("message")?.optString("text") == "Live reply from Windows PC to Mobile!"
+                    }
+                }
+                if (!foundPcLiveReply) Thread.sleep(40)
+            }
+            assertTrue("Mobile MUST receive live chat message sent from Windows PC!", foundPcLiveReply)
+
+            mgr.shutdownAll()
+        } finally {
+            runCatching { pyHost.outputStream.write("STOP\n".toByteArray()); pyHost.outputStream.flush() }
+            pyHost.destroy()
+            dir.deleteRecursively()
+        }
+    }
 }

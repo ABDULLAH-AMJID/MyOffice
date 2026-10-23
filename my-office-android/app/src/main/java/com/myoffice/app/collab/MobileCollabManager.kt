@@ -17,12 +17,11 @@ import java.util.concurrent.TimeUnit
 /**
  * Live Multi-Room PC <-> Android Collaboration & Real-Time Team Chat Client (`MobileCollabManager`):
  *  - Accepts ANY room link scanned via QR or pasted (`http://192.168.x.x:8765/f/<room>`,
- *    `myoffice://join?ws=...&http=...&room=...`, or `ws://192.168.x.x:8765/<room>`)
+ *    `myoffice://join?ws=...&http=...&room=...`, `ws://192.168.x.x:8765/<room>`, or `ip:port/room`)
  *  - Auto-downloads the shared file snapshot (`/api/rooms/<room>/file`) of ANY file format
  *    (`.docx`, `.xlsx`, `.pptx`, `.pdf`, `.png`, `.jpg`, `.csv`, `.txt`, `.zip`, etc.)
- *  - Maintains multiple simultaneous active room WebSocket connections (`sessionsByRoom`) so users can
- *    collaborate on MULTIPLE open files at the exact same time — with real-time Writer text co-editing,
- *    Spreadsheet live cell updates, snapshot push/pull for Slides/PDF/Photos, and Live Team Chat!
+ *  - Normalizes chat entries whether stored as JSON Objects OR JSON Strings in Yjs CRDT `ychat`
+ *    so BOTH Mobile -> PC AND PC -> Mobile messages stream in real time without loss!
  */
 class MobileCollabManager(
     private val cacheDir: File,
@@ -42,6 +41,8 @@ class MobileCollabManager(
         val userColor: String,
         val clientId: String,
         var localFile: File?,
+        var filename: String = "",
+        var kind: String = "any",
         var webSocket: WebSocket? = null,
         @Volatile var connected: Boolean = false,
         val chatHistory: MutableList<JSONObject> = mutableListOf()
@@ -50,8 +51,38 @@ class MobileCollabManager(
     private val sessions = ConcurrentHashMap<String, ActiveSession>()
 
     companion object {
+        private val KIND_EXT_MAP = mapOf(
+            "writer" to ".docx",
+            "sheet" to ".xlsx",
+            "slide" to ".pptx",
+            "pdf" to ".pdf",
+            "photos" to ".png"
+        )
+
+        fun ensureSafeFilename(rawName: String, kind: String, room: String): String {
+            var base = rawName.trim()
+                .replace('\\', '_')
+                .replace('/', '_')
+                .replace(':', '_')
+                .ifEmpty { room.ifEmpty { "Shared_Document" } }
+            val hasExt = base.substringAfterLast('.', "").isNotEmpty() && '.' in base
+            if (!hasExt) {
+                val ext = KIND_EXT_MAP[kind.lowercase()] ?: ""
+                if (ext.isNotEmpty()) base += ext
+            }
+            return base
+        }
+
+        fun normalizeChatItem(rawItem: Any?): JSONObject? {
+            return when (rawItem) {
+                is JSONObject -> rawItem
+                is String -> runCatching { JSONObject(rawItem) }.getOrNull()
+                else -> null
+            }
+        }
+
         fun parseCollabJoinTarget(rawLink: String): JSONObject {
-            val raw = rawLink.trim()
+            var raw = rawLink.trim()
             if (raw.startsWith("myoffice://join", ignoreCase = true)) {
                 val params = raw.substringAfter('?', "").split('&').filter { it.isNotEmpty() }.associate {
                     URLDecoder.decode(it.substringBefore('='), "UTF-8") to
@@ -67,11 +98,28 @@ class MobileCollabManager(
                     .put("wsUrl", wsUrl)
                     .put("filename", params["name"] ?: "")
             }
+            if (!raw.contains("://") && raw.any { it.isDigit() } && ':' in raw) {
+                raw = "http://$raw"
+            }
             if (raw.startsWith("http://") || raw.startsWith("https://")) {
                 val clean = raw.trimEnd('/')
                 val idx = clean.indexOf("/f/")
-                val httpBase = if (idx > 0) clean.substring(0, idx) else clean.substringBeforeLast('/')
-                val room = if (idx > 0) URLDecoder.decode(clean.substring(idx + 3), "UTF-8") else "shared-room"
+                val httpBase: String
+                val room: String
+                if (idx > 0) {
+                    httpBase = clean.substring(0, idx)
+                    room = URLDecoder.decode(clean.substring(idx + 3), "UTF-8").ifEmpty { "default" }
+                } else {
+                    val schemeEnd = clean.indexOf("://") + 3
+                    val slashIdx = clean.indexOf('/', schemeEnd)
+                    if (slashIdx > 0) {
+                        httpBase = clean.substring(0, slashIdx)
+                        room = URLDecoder.decode(clean.substring(slashIdx + 1), "UTF-8").ifEmpty { "default" }
+                    } else {
+                        httpBase = clean
+                        room = "default"
+                    }
+                }
                 val wsScheme = if (clean.startsWith("https://")) "wss://" else "ws://"
                 val hostPort = httpBase.removePrefix("http://").removePrefix("https://")
                 return JSONObject()
@@ -81,16 +129,47 @@ class MobileCollabManager(
             }
             if (raw.startsWith("ws://") || raw.startsWith("wss://")) {
                 val baseNoQuery = raw.substringBefore('?').trimEnd('/')
-                val room = URLDecoder.decode(baseNoQuery.substringAfterLast('/'), "UTF-8").ifEmpty { "default" }
-                val hostPort = baseNoQuery.removePrefix("ws://").removePrefix("wss://").substringBefore('/')
+                val schemeEnd = baseNoQuery.indexOf("://") + 3
+                val slashIdx = baseNoQuery.indexOf('/', schemeEnd)
+                val hostPort = if (slashIdx > 0) baseNoQuery.substring(schemeEnd, slashIdx) else baseNoQuery.substring(schemeEnd)
+                val room = if (slashIdx > 0) URLDecoder.decode(baseNoQuery.substring(slashIdx + 1), "UTF-8").ifEmpty { "default" } else "default"
                 val httpScheme = if (raw.startsWith("wss://")) "https://" else "http://"
                 return JSONObject()
                     .put("room", room)
                     .put("httpBase", "$httpScheme$hostPort")
-                    .put("wsUrl", "$baseNoQuery?client=mobile")
+                    .put("wsUrl", "${if (slashIdx > 0) baseNoQuery else "$baseNoQuery/$room"}?client=mobile")
             }
             throw IllegalArgumentException("Unrecognized collaboration link: '$rawLink'")
         }
+    }
+
+    private fun downloadRoomSnapshotToDisk(httpBase: String, room: String, saveDir: File, fallbackName: String, fallbackKind: String): Pair<File?, Pair<String, String>> {
+        if (httpBase.isEmpty()) return null to (ensureSafeFilename(fallbackName, fallbackKind, room) to fallbackKind)
+        saveDir.mkdirs()
+        var metaName = fallbackName
+        var kind = fallbackKind
+        runCatching {
+            http.newCall(Request.Builder().url("$httpBase/api/rooms/$room/meta").get().build()).execute().use { r ->
+                if (r.isSuccessful) {
+                    val m = JSONObject(r.body?.string() ?: "{}")
+                    metaName = m.optString("filename", metaName).ifEmpty { metaName }
+                    kind = m.optString("kind", kind).ifEmpty { kind }
+                }
+            }
+        }
+        val safeName = ensureSafeFilename(metaName, kind, room)
+        val destFile = File(saveDir, safeName)
+        runCatching {
+            http.newCall(Request.Builder().url("$httpBase/api/rooms/$room/file").get().build()).execute().use { r ->
+                if (r.isSuccessful) {
+                    val bytes = r.body?.bytes() ?: ByteArray(0)
+                    if (bytes.isNotEmpty()) {
+                        destFile.writeBytes(bytes)
+                    }
+                }
+            }
+        }
+        return (if (destFile.isFile && destFile.length() > 0) destFile else null) to (safeName to kind)
     }
 
     fun joinRoom(
@@ -107,26 +186,13 @@ class MobileCollabManager(
         // Leave existing connection on same room cleanly before re-joining
         leaveRoom(room)
 
-        // 1. Fetch room metadata + initial binary snapshot over HTTP so ANY format works out-of-the-box!
-        saveDir.mkdirs()
-        var filename = parsed.optString("filename", "").ifEmpty { room }
-        runCatching {
-            http.newCall(Request.Builder().url("$httpBase/api/rooms/$room/meta").get().build()).execute().use { r ->
-                if (r.isSuccessful) {
-                    val m = JSONObject(r.body?.string() ?: "{}")
-                    filename = m.optString("filename", filename).ifEmpty { filename }
-                }
-            }
-        }
-        val destFile = File(saveDir, filename)
-        runCatching {
-            http.newCall(Request.Builder().url("$httpBase/api/rooms/$room/file").get().build()).execute().use { r ->
-                if (r.isSuccessful) {
-                    val bytes = r.body?.bytes() ?: ByteArray(0)
-                    if (bytes.isNotEmpty()) destFile.writeBytes(bytes)
-                }
-            }
-        }
+        val (initialFile, nameAndKind) = downloadRoomSnapshotToDisk(
+            httpBase,
+            room,
+            saveDir,
+            parsed.optString("filename", ""),
+            "any"
+        )
 
         val session = ActiveSession(
             room = room,
@@ -135,12 +201,16 @@ class MobileCollabManager(
             userName = userName,
             userColor = userColor,
             clientId = "mob-${UUID.randomUUID().toString().take(8)}",
-            localFile = if (destFile.isFile) destFile else null
+            localFile = initialFile,
+            filename = nameAndKind.first,
+            kind = nameAndKind.second
         )
         sessions[room] = session
 
-        val openLatch = java.util.concurrent.CountDownLatch(1)
+        val initialStateLatch = java.util.concurrent.CountDownLatch(1)
         val seenChatIds = java.util.Collections.synchronizedSet(HashSet<String>())
+        var initialWriterText = ""
+        var initialSheets = JSONObject()
 
         val ws = http.newWebSocket(
             Request.Builder().url(wsUrl).build(),
@@ -155,20 +225,56 @@ class MobileCollabManager(
                             .put("color", userColor)
                             .toString()
                     )
-                    openLatch.countDown()
                     onEvent(room, JSONObject().put("type", "connected").put("room", room))
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     runCatching {
                         val obj = JSONObject(text)
-                        if (obj.optString("type") == "state") {
+                        val mtype = obj.optString("type")
+                        if (mtype == "state") {
+                            val metaObj = obj.optJSONObject("meta")
+                            if (metaObj != null) {
+                                val mk = metaObj.optString("kind", session.kind).ifEmpty { session.kind }
+                                val mn = ensureSafeFilename(metaObj.optString("filename", session.filename), mk, room)
+                                session.kind = mk
+                                session.filename = mn
+                                // If file was not downloaded yet (or host just uploaded snapshot), pull it right now!
+                                if ((session.localFile == null || session.localFile?.length() == 0L) && metaObj.optLong("size", 0L) > 0L) {
+                                    val (pulled, nk) = downloadRoomSnapshotToDisk(httpBase, room, saveDir, mn, mk)
+                                    if (pulled != null) {
+                                        session.localFile = pulled
+                                        session.filename = nk.first
+                                        onEvent(
+                                            room,
+                                            JSONObject()
+                                                .put("type", "file_push_notify")
+                                                .put("meta", metaObj)
+                                                .put("relPath", "Collaborations/${session.filename}")
+                                                .put("filename", session.filename)
+                                        )
+                                    }
+                                }
+                            }
+
+                            initialWriterText = obj.optString("writer_text", initialWriterText)
+                            obj.optJSONObject("sheets")?.let { initialSheets = it }
+
+                            // If room only has plain Writer CRDT text without binary file yet, materialize readable .txt file locally!
+                            if (session.localFile == null && initialWriterText.isNotEmpty()) {
+                                val fallbackTxt = File(saveDir.apply { mkdirs() }, "${room}.txt")
+                                fallbackTxt.writeText(initialWriterText, Charsets.UTF_8)
+                                session.localFile = fallbackTxt
+                                session.filename = fallbackTxt.name
+                                session.kind = "writer"
+                            }
+
                             val arr = obj.optJSONArray("chat") ?: JSONArray()
                             val newMsgs = mutableListOf<JSONObject>()
                             synchronized(session.chatHistory) {
                                 session.chatHistory.clear()
                                 for (i in 0 until arr.length()) {
-                                    arr.optJSONObject(i)?.let { m ->
+                                    normalizeChatItem(arr.opt(i))?.let { m ->
                                         session.chatHistory.add(m)
                                         val mid = m.optString("id", "${m.optString("sender")}:${m.optString("text")}:${m.optDouble("ts")}")
                                         if (seenChatIds.add(mid)) {
@@ -177,28 +283,47 @@ class MobileCollabManager(
                                     }
                                 }
                             }
+                            val normalizedChatArr = JSONArray()
+                            synchronized(session.chatHistory) {
+                                session.chatHistory.forEach { normalizedChatArr.put(it) }
+                            }
+                            obj.put("chat", normalizedChatArr)
+                            if (session.localFile != null) {
+                                obj.put("relPath", "Collaborations/${session.filename}")
+                                obj.put("filename", session.filename)
+                            }
+                            initialStateLatch.countDown()
                             onEvent(room, obj)
                             for (nm in newMsgs) {
                                 onEvent(room, JSONObject().put("type", "chat_push").put("message", nm))
                             }
                             return@runCatching
-                        } else if (obj.optString("type") == "chat_push") {
-                            obj.optJSONObject("message")?.let { m ->
+                        } else if (mtype == "chat_push") {
+                            normalizeChatItem(obj.opt("message"))?.let { m ->
+                                obj.put("message", m)
                                 val mid = m.optString("id", "${m.optString("sender")}:${m.optString("text")}:${m.optDouble("ts")}")
                                 seenChatIds.add(mid)
-                                synchronized(session.chatHistory) { session.chatHistory.add(m) }
-                            }
-                        } else if (obj.optString("type") == "file_push_notify") {
-                            session.localFile?.let { target ->
-                                runCatching {
-                                    http.newCall(Request.Builder().url("$httpBase/api/rooms/$room/file").get().build())
-                                        .execute().use { r ->
-                                            if (r.isSuccessful) {
-                                                val b = r.body?.bytes() ?: ByteArray(0)
-                                                if (b.isNotEmpty()) target.writeBytes(b)
-                                            }
-                                        }
+                                synchronized(session.chatHistory) {
+                                    if (session.chatHistory.none { it.optString("id") == mid }) {
+                                        session.chatHistory.add(m)
+                                    }
                                 }
+                            }
+                        } else if (mtype == "file_push_notify") {
+                            val metaObj = obj.optJSONObject("meta")
+                            val (pulled, nk) = downloadRoomSnapshotToDisk(
+                                httpBase,
+                                room,
+                                saveDir,
+                                metaObj?.optString("filename", session.filename) ?: session.filename,
+                                metaObj?.optString("kind", session.kind) ?: session.kind
+                            )
+                            if (pulled != null) {
+                                session.localFile = pulled
+                                session.filename = nk.first
+                                session.kind = nk.second
+                                obj.put("relPath", "Collaborations/${session.filename}")
+                                obj.put("filename", session.filename)
                             }
                         }
                         onEvent(room, obj)
@@ -207,13 +332,13 @@ class MobileCollabManager(
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     session.connected = false
-                    openLatch.countDown()
+                    initialStateLatch.countDown()
                     onEvent(room, JSONObject().put("type", "disconnected").put("room", room))
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     session.connected = false
-                    openLatch.countDown()
+                    initialStateLatch.countDown()
                     onEvent(
                         room,
                         JSONObject().put("type", "error").put("room", room).put("message", t.message ?: "Network error")
@@ -222,13 +347,30 @@ class MobileCollabManager(
             }
         )
         session.webSocket = ws
-        openLatch.await(4, TimeUnit.SECONDS)
+        initialStateLatch.await(4, TimeUnit.SECONDS)
+
+        val chatSnap = JSONArray()
+        synchronized(session.chatHistory) {
+            session.chatHistory.forEach { chatSnap.put(it) }
+        }
+        val relPath = if (session.localFile != null && session.localFile!!.isFile) {
+            "Collaborations/${session.filename}"
+        } else {
+            ""
+        }
 
         return JSONObject()
             .put("ok", true)
             .put("room", room)
-            .put("filename", filename)
+            .put("filename", session.filename)
+            .put("fileName", session.filename)
+            .put("kind", session.kind)
+            .put("relPath", relPath)
             .put("localPath", session.localFile?.absolutePath ?: "")
+            .put("hasFile", relPath.isNotEmpty())
+            .put("writerText", initialWriterText)
+            .put("sheets", initialSheets)
+            .put("chat", chatSnap)
             .put("wsUrl", wsUrl)
             .put("httpBase", httpBase)
     }
@@ -288,6 +430,8 @@ class MobileCollabManager(
             arr.put(
                 JSONObject()
                     .put("room", s.room)
+                    .put("filename", s.filename)
+                    .put("relPath", if (s.localFile?.isFile == true) "Collaborations/${s.filename}" else "")
                     .put("connected", s.connected)
                     .put("localPath", s.localFile?.absolutePath ?: "")
                     .put("httpBase", s.httpBase)

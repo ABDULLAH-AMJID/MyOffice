@@ -288,6 +288,7 @@
     collabRoom: null,
     collabMeta: null,
     collabMessages: [],
+    collabUnread: 0,
     photoFilter: { bright: 100, contrast: 100, sat: 100, gray: 0, rotate: 0 },
     slideShowIdx: 0,
     sheetPromptResolver: null
@@ -587,6 +588,21 @@
     else if (d.kind === "slide") renderSlideEditor(ov, d);
     else if (d.kind === "pdf") renderPdfEditor(ov, d);
     else if (d.kind === "photos") renderPhotosEditor(ov, d);
+    injectEditorCollabPill(ov);
+  }
+
+  function injectEditorCollabPill(ov) {
+    if (!state.collabRoom || !ov) return;
+    const actions = ov.querySelector(".top-actions");
+    if (!actions || document.getElementById("btnEditorCollabChat")) return;
+    const btn = document.createElement("button");
+    btn.id = "btnEditorCollabChat";
+    btn.className = "chip active";
+    btn.style.cssText = "height:34px;padding:0 10px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;margin-right:4px;";
+    btn.onclick = () => App.openLiveCollabChatSheet();
+    const cnt = state.collabUnread > 0 ? ` (${state.collabUnread})` : "";
+    btn.innerHTML = `${svgIcon("users", "ico ico-sm")}<span id="lblEditorCollabUnread">Chat${cnt}</span>`;
+    actions.insertBefore(btn, actions.firstChild);
   }
 
   // ==================== 1. FLAGSHIP WRITER EDITOR ====================
@@ -1147,6 +1163,63 @@
     if (info.uri) handleIncomingUriOrQr(info.uri);
   };
 
+  function normalizeCollabMsg(rawMsg) {
+    if (!rawMsg) return null;
+    let m = rawMsg;
+    if (typeof m === "string") {
+      try { m = JSON.parse(m); } catch (_) { return null; }
+    }
+    if (!m || typeof m !== "object" || !m.text) return null;
+    if (!m.id) m.id = `${m.sender || "peer"}:${m.text}:${m.ts || 0}`;
+    return m;
+  }
+
+  function upsertCollabMessage(rawMsg) {
+    const m = normalizeCollabMsg(rawMsg);
+    if (!m) return false;
+    if (state.collabMessages.some((x) => x.id === m.id)) return false;
+    state.collabMessages.push(m);
+    return true;
+  }
+
+  function updateEditorCollabBadge() {
+    const lbl = document.getElementById("lblEditorCollabUnread");
+    if (lbl) {
+      lbl.textContent = state.collabUnread > 0 ? `Chat (${state.collabUnread})` : "Chat";
+    }
+  }
+
+  function resolveSharedRelPath() {
+    const m = state.collabMeta;
+    if (!m) return "";
+    if (m.relPath) return m.relPath;
+    const fn = m.filename || m.fileName || "";
+    return fn ? `Collaborations/${fn}` : "";
+  }
+
+  function renderSharedFileCard() {
+    const box = document.getElementById("collabSharedFileBox");
+    if (!box) return;
+    const rel = resolveSharedRelPath();
+    if (!state.collabRoom || !rel) {
+      box.innerHTML = "";
+      return;
+    }
+    const fname = state.collabMeta?.filename || state.collabMeta?.fileName || rel.split("/").pop();
+    box.innerHTML = `
+      <div class="action-list" style="border:1px solid var(--accent);background:var(--surface);">
+        <div class="action-row" style="cursor:pointer;" onclick="App.openJoinedRoomFile()">
+          ${svgIcon(extToIcon(fname.split(".").pop() || "docx"))}
+          <div class="action-row-body">
+            <div class="action-row-title">${esc(fname)}</div>
+            <div class="action-row-sub">Live Shared File · Tap to view & co-edit</div>
+          </div>
+          <span class="chip active" style="flex-shrink:0;">Open</span>
+        </div>
+      </div>
+    `;
+  }
+
   async function handleIncomingUriOrQr(text) {
     const t = text.trim();
     if (t.startsWith("myoffice://pair") || t.includes("/api/v1") || /:4188\d|:8766/.test(t)) {
@@ -1154,7 +1227,14 @@
       document.getElementById("pcUrlInput").value = t;
       toast("Connecting to PC...");
       await App.pairAndSyncPcNow();
-    } else if (t.startsWith("ws://") || t.startsWith("wss://") || t.startsWith("myoffice://join")) {
+    } else if (
+      t.startsWith("ws://") ||
+      t.startsWith("wss://") ||
+      t.startsWith("myoffice://join") ||
+      t.includes("/f/") ||
+      /:8765\b/.test(t) ||
+      /^https?:\/\/\d+\.\d+\.\d+\.\d+:\d+/.test(t)
+    ) {
       App.switchTab("collab");
       document.getElementById("collabLinkInput").value = t;
       await App.joinCollabRoomNow();
@@ -1164,38 +1244,80 @@
   }
 
   window.__onNativeCollabEvent = async function (raw) {
-    const wrapper = JSON.parse(raw);
+    const wrapper = typeof raw === "string" ? JSON.parse(raw) : (raw || {});
     const evt = wrapper.event || {};
     const t = evt.type || evt.event || "";
     if (t === "chat_push" && evt.message) {
-      if (!state.collabMessages.some((m) => m.id && m.id === evt.message.id)) {
-        state.collabMessages.push(evt.message);
+      if (upsertCollabMessage(evt.message)) {
         renderCollabChat();
+        const modalOpen = Boolean(document.getElementById("sheetCollabChatLog"));
+        const editorOpen = state.doc && !document.getElementById("editorOverlay").classList.contains("hidden");
+        if (editorOpen && !modalOpen) {
+          state.collabUnread += 1;
+          updateEditorCollabBadge();
+          const m = normalizeCollabMsg(evt.message);
+          if (m) toast(`${m.sender || "PC"}: ${m.text}`);
+        }
       }
     } else if (t === "state") {
-      if (Array.isArray(evt.chat)) {
-        state.collabMessages = evt.chat;
-        renderCollabChat();
+      if (evt.relPath && state.collabMeta) {
+        state.collabMeta.relPath = evt.relPath;
+        state.collabMeta.filename = evt.filename || state.collabMeta.filename;
+        renderSharedFileCard();
       }
-      if (typeof evt.writer_text === "string" && state.doc && state.doc.kind === "writer") {
+      if (Array.isArray(evt.chat)) {
+        let added = 0;
+        evt.chat.forEach((rawM) => {
+          if (upsertCollabMessage(rawM)) added += 1;
+        });
+        if (added > 0 || state.collabMessages.length > 0) renderCollabChat();
+      }
+      if (typeof evt.writer_text === "string" && evt.writer_text && state.doc && state.doc.kind === "writer") {
         const surf = document.getElementById("writerSurface");
         if (surf && document.activeElement !== surf) surf.innerText = evt.writer_text;
       }
+      if (evt.sheets && typeof evt.sheets === "object" && state.doc && state.doc.kind === "sheet") {
+        let changedCells = false;
+        (state.doc.sheets || []).forEach((sh) => {
+          const remoteMap = evt.sheets[sh.name];
+          if (remoteMap && typeof remoteMap === "object") {
+            Object.entries(remoteMap).forEach(([cellRef, val]) => {
+              if (!sh.cells[cellRef] || sh.cells[cellRef].raw !== String(val)) {
+                sh.cells[cellRef] = { raw: String(val), value: String(val) };
+                changedCells = true;
+              }
+            });
+          }
+        });
+        if (changedCells) renderSheetEditor(document.getElementById("editorOverlay"), state.doc);
+      }
     } else if (t === "connected") {
       const b = document.getElementById("collabPeersBadge");
-      b.textContent = "Live";
-      b.classList.add("live");
+      if (b) {
+        b.textContent = "Live";
+        b.classList.add("live");
+      }
     } else if (t === "file_push_notify") {
+      if (evt.relPath && state.collabMeta) {
+        state.collabMeta.relPath = evt.relPath;
+        state.collabMeta.filename = evt.filename || evt.meta?.filename || state.collabMeta.filename;
+      }
       await refreshWorkspace();
-      toast(`Updated shared file (${evt.meta?.filename || "room"})`);
+      renderSharedFileCard();
+      const targetRel = evt.relPath || resolveSharedRelPath();
+      if (targetRel && (!state.doc || state.doc.rel === targetRel)) {
+        await openFile(targetRel);
+      }
+      toast(`Updated shared file (${evt.meta?.filename || evt.filename || "live"})`);
     } else if (t === "writer_push" && state.doc && state.doc.kind === "writer") {
       const surf = document.getElementById("writerSurface");
       if (surf && document.activeElement !== surf) surf.innerText = evt.writer_text || "";
     } else if (t === "sheet_push" && state.doc && state.doc.kind === "sheet") {
-      const sheet = state.doc.sheets[0];
+      const sheet = state.doc.sheets.find((s) => s.name === evt.sheet) || state.doc.sheets[0];
       if (sheet) {
         sheet.cells[evt.cell] = { raw: evt.value, value: evt.value };
         renderSheetEditor(document.getElementById("editorOverlay"), state.doc);
+        injectEditorCollabPill(document.getElementById("editorOverlay"));
       }
     }
   };
@@ -1216,19 +1338,30 @@
     return false;
   };
 
-  function renderCollabChat() {
-    const box = document.getElementById("collabChatLog");
+  function renderChatHtmlList() {
     if (!state.collabMessages.length) {
-      box.innerHTML = `<div style="font-size:13px;color:var(--ink-muted);">Connected. Messages appear instantly on both PC and phone.</div>`;
-      return;
+      return `<div style="font-size:13px;color:var(--ink-muted);">Connected. Messages appear instantly on both PC and phone.</div>`;
     }
-    box.innerHTML = state.collabMessages.map((m) => `
+    return state.collabMessages.map((m) => `
       <div class="chat-msg">
-        <div class="chat-sender">${esc(m.sender || "Participant")}</div>
+        <div class="chat-sender" style="color:${esc(m.color || "var(--accent)")};">${esc(m.sender || "Participant")}</div>
         <div>${esc(m.text || "")}</div>
       </div>
     `).join("");
-    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderCollabChat() {
+    const html = renderChatHtmlList();
+    const box = document.getElementById("collabChatLog");
+    if (box) {
+      box.innerHTML = html;
+      box.scrollTop = box.scrollHeight;
+    }
+    const modalBox = document.getElementById("sheetCollabChatLog");
+    if (modalBox) {
+      modalBox.innerHTML = html;
+      modalBox.scrollTop = modalBox.scrollHeight;
+    }
   }
 
   // ==================== PREFERENCES & CREATE SHEETS ====================
@@ -1980,17 +2113,33 @@
       const userName = document.getElementById("collabUserName").value.trim() || "Mobile User";
       if (!link) { toast("Enter room link or scan QR first"); return; }
       try {
-        const res = await nativeCall("joinCollabRoom", { link, userName });
-        state.collabRoom = res.session.room;
-        state.collabMeta = res.session;
         state.collabMessages = [];
-        document.getElementById("collabRoomHeader").textContent = `Room: ${res.session.room}`;
+        state.collabUnread = 0;
+        const res = await nativeCall("joinCollabRoom", { link, userName });
+        const sess = res.session || {};
+        state.collabRoom = sess.room;
+        state.collabMeta = sess;
+        if (Array.isArray(sess.chat)) {
+          sess.chat.forEach((m) => upsertCollabMessage(m));
+        }
+        document.getElementById("collabRoomHeader").textContent = `Room: ${sess.room}`;
         const badge = document.getElementById("collabPeersBadge");
         badge.textContent = "Live";
         badge.classList.add("live");
         renderCollabChat();
+        renderSharedFileCard();
         await refreshWorkspace();
-        toast("Connected to room " + res.session.room);
+        const rel = resolveSharedRelPath();
+        if (rel) {
+          toast(`Connected & opening ${sess.filename || rel}...`);
+          await openFile(rel);
+          if (typeof sess.writerText === "string" && sess.writerText && state.doc && state.doc.kind === "writer") {
+            const surf = document.getElementById("writerSurface");
+            if (surf && !surf.innerText.trim()) surf.innerText = sess.writerText;
+          }
+        } else {
+          toast("Connected to room " + sess.room);
+        }
       } catch (e) {
         toast("Connection failed: " + e.message);
       }
@@ -2005,14 +2154,53 @@
       await nativeCall("sendCollabChat", { room: state.collabRoom, text });
     },
 
-    openJoinedRoomFile() {
-      if (state.collabMeta?.localPath) openFile("Collaborations/" + state.collabMeta.fileName);
+    openLiveCollabChatSheet() {
+      if (!state.collabRoom) return;
+      state.collabUnread = 0;
+      updateEditorCollabBadge();
+      const fname = state.collabMeta?.filename || state.collabRoom;
+      showModal(`
+        <h3 class="modal-title">Live Team Chat · ${esc(fname)}</h3>
+        <div class="chat-log" id="sheetCollabChatLog" style="max-height:240px;margin-bottom:10px;">
+          ${renderChatHtmlList()}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input class="input" id="sheetCollabChatInput" placeholder="Message PC & team..." onkeydown="if(event.key==='Enter')App.sendSheetChatNow()" />
+          <button class="btn btn-primary" onclick="App.sendSheetChatNow()">Send</button>
+        </div>
+      `);
+      const modalBox = document.getElementById("sheetCollabChatLog");
+      if (modalBox) modalBox.scrollTop = modalBox.scrollHeight;
+      setTimeout(() => document.getElementById("sheetCollabChatInput")?.focus(), 80);
+    },
+
+    async sendSheetChatNow() {
+      if (!state.collabRoom) return;
+      const inp = document.getElementById("sheetCollabChatInput");
+      if (!inp) return;
+      const text = inp.value.trim();
+      if (!text) return;
+      inp.value = "";
+      await nativeCall("sendCollabChat", { room: state.collabRoom, text });
+    },
+
+    async openJoinedRoomFile() {
+      const rel = resolveSharedRelPath();
+      if (!rel) {
+        toast("Waiting for host file snapshot...");
+        return;
+      }
+      await refreshWorkspace();
+      await openFile(rel);
     },
 
     async leaveCurrentRoom() {
       if (!state.collabRoom) return;
       await nativeCall("leaveCollabRoom", { room: state.collabRoom });
       state.collabRoom = null;
+      state.collabMeta = null;
+      state.collabUnread = 0;
+      renderSharedFileCard();
       const badge = document.getElementById("collabPeersBadge");
       badge.textContent = "Offline";
       badge.classList.remove("live");

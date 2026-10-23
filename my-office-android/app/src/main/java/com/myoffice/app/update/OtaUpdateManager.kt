@@ -22,8 +22,8 @@ import java.util.zip.ZipFile
  */
 object OtaUpdateManager {
 
-    const val NATIVE_VERSION_NAME = "1.6.0"
-    const val NATIVE_VERSION_CODE = 10600
+    const val NATIVE_VERSION_NAME = "1.6.1"
+    const val NATIVE_VERSION_CODE = 10601
     const val DEFAULT_REPO_URL = "https://github.com/ABDULLAH-AMJID/MyOffice"
 
     const val RELEASE_PUBLIC_KEY_B64 =

@@ -857,6 +857,7 @@ class MainWindow(QMainWindow):
 
     def quick_share_active_file(self):
         from PySide6.QtGui import QGuiApplication
+        from app.collab.binding import extract_doc_snapshot_bytes
         from app.collab.dialog import attach_session_to_doc, _make_room_slug
         from app.collab.server import ensure_shared_server, primary_lan_ip
 
@@ -865,11 +866,14 @@ class MainWindow(QMainWindow):
         if sess is None:
             srv = ensure_shared_server()
             room = _make_room_slug(doc)
+            path_str = str(doc.path) if doc.path else ""
+            raw_bytes, fname, kind = extract_doc_snapshot_bytes(doc)
             srv.register_shared_file(
                 room,
-                file_path=str(doc.path) if doc.path and doc.path.is_file() else None,
-                filename=doc.display_name(),
-                kind=doc.kind,
+                file_path=path_str if path_str and os.path.isfile(path_str) else None,
+                filename=fname,
+                kind=kind,
+                raw_bytes=raw_bytes or None,
             )
             sess = attach_session_to_doc(
                 self, doc, f"ws://127.0.0.1:{srv.port}", room,
