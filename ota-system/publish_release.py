@@ -192,16 +192,29 @@ def build_and_sign_ota(
         rel_base = base_override_url.rstrip("/")
     elif slug:
         raw_base = f"https://raw.githubusercontent.com/{slug}/{branch}/ota"
-        rel_base = f"https://github.com/{slug}/releases/download/v{version}"
+        rel_base = f"https://github.com/{slug}/releases/latest/download"
     else:
         # Relative URLs resolve cleanly against whatever repo/server URL the client fetched manifest.json from!
         raw_base = "."
         rel_base = "../releases"
 
+    prev_manifest: dict = {}
+    prev_path = OTA_OUT_DIR / "manifest.json"
+    if prev_path.exists():
+        try:
+            prev_manifest = json.loads(prev_path.read_text(encoding="utf-8"))
+        except Exception:
+            prev_manifest = {}
+
     apk_local = WORKSPACE_ROOT / "MyOffice_Android.apk"
     exe_local = WORKSPACE_ROOT / "MyOffice_Setup.exe"
-    exe_sha = sha256_file(exe_local) if exe_local.exists() else ""
-    exe_size = exe_local.stat().st_size if exe_local.exists() else 0
+    prev_win = prev_manifest.get("windows") if isinstance(prev_manifest.get("windows"), dict) else {}
+    prev_and = prev_manifest.get("android") if isinstance(prev_manifest.get("android"), dict) else {}
+
+    exe_sha = sha256_file(exe_local) if exe_local.exists() else str(prev_win.get("installer_sha256", ""))
+    exe_size = exe_local.stat().st_size if exe_local.exists() else int(prev_win.get("installer_size", 0))
+    apk_sha = sha256_file(apk_local) if apk_local.exists() else str(prev_and.get("apk_sha256", ""))
+    apk_size = apk_local.stat().st_size if apk_local.exists() else int(prev_and.get("apk_size", 0))
 
     manifest = {
         "schema": "myoffice-ota-v2",
@@ -225,8 +238,8 @@ def build_and_sign_ota(
             "bundle_size": and_size,
             "bundle_files": and_count,
             "apk_url": f"{rel_base}/MyOffice_Android.apk",
-            "apk_sha256": sha256_file(apk_local) if apk_local.exists() else "",
-            "apk_size": apk_local.stat().st_size if apk_local.exists() else 0,
+            "apk_sha256": apk_sha,
+            "apk_size": apk_size,
         },
         # Tier-1 + Tier-2 Windows descriptor
         "windows": {
