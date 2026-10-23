@@ -865,4 +865,92 @@ srv.stop()
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `9 live 6x parallel HTTP 206 Range turbo downloader and real-time progress events in OtaUpdateManager`() {
+        val dir = Files.createTempDirectory("mo_ota_turbo_range").toFile()
+        val pyRangeServer = ProcessBuilder(
+            "python3", "-u", "-c",
+            """
+import hashlib, http.server, json, sys, threading
+
+payload = b"ANDROID_TURBO_6X_STREAM_BLOCK_9876543210_" * 42000
+sha = hashlib.sha256(payload).hexdigest()
+range_hits = []
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        rng = self.headers.get("Range", "")
+        if rng.startswith("bytes="):
+            range_hits.append(rng)
+            s, e = rng[6:].split("-", 1)
+            st = int(s)
+            en = min(len(payload) - 1, int(e)) if e else len(payload) - 1
+            body = payload[st:en + 1]
+            self.send_response(206)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Range", f"bytes {st}-{en}/{len(payload)}")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+    def log_message(self, *a):
+        pass
+
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+print(json.dumps({"port": srv.server_address[1], "sha": sha, "size": len(payload)}), flush=True)
+for line in sys.stdin:
+    if line.strip() == "STATS":
+        print(json.dumps({"ranges": len(range_hits)}), flush=True)
+    elif line.strip() == "STOP":
+        break
+srv.shutdown()
+            """.trimIndent()
+        ).directory(pcSuiteDir).redirectErrorStream(true).start()
+
+        try {
+            val reader = BufferedReader(InputStreamReader(pyRangeServer.inputStream))
+            val boot = readNextJsonLine(reader)
+            val port = boot.getInt("port")
+            val expectedSha = boot.getString("sha")
+            val totalSize = boot.getLong("size")
+
+            val progressEvents = CopyOnWriteArrayList<JSONObject>()
+            val checkInfo = JSONObject()
+                .put("downloadUrl", "http://127.0.0.1:$port/MyOffice_Android.apk")
+                .put("sha256", expectedSha)
+                .put("mode", "apk")
+                .put("latestVersion", "1.6.2")
+                .put("latestCode", 10602)
+                .put("size", totalSize)
+
+            val res = OtaUpdateManager.downloadAndStageUpdate(
+                filesDir = File(dir, "files").apply { mkdirs() },
+                cacheDir = File(dir, "cache").apply { mkdirs() },
+                checkInfo = checkInfo
+            ) { evt -> progressEvents.add(evt) }
+
+            assertEquals("apk", res.getString("mode"))
+            val outApk = File(res.getString("apkPath"))
+            assertEquals(totalSize, outApk.length())
+            assertEquals(expectedSha, OtaUpdateManager.sha256FileHex(outApk))
+
+            val phases = progressEvents.map { it.optString("phase") }.toSet()
+            assertTrue("Expected connecting/downloading/verifying/ready phases, got: $phases", phases.containsAll(listOf("connecting", "downloading", "verifying", "ready")))
+
+            pyRangeServer.outputStream.write("STATS\n".toByteArray())
+            pyRangeServer.outputStream.flush()
+            val stats = readNextJsonLine(reader)
+            assertTrue("Expected >= 5 parallel HTTP 206 Range requests, got ${stats.getInt("ranges")}", stats.getInt("ranges") >= 5)
+        } finally {
+            runCatching { pyRangeServer.outputStream.write("STOP\n".toByteArray()); pyRangeServer.outputStream.flush() }
+            pyRangeServer.destroy()
+            dir.deleteRecursively()
+        }
+    }
 }

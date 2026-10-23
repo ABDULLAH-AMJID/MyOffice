@@ -66,8 +66,11 @@ class UpdateInfo:
         return f"MyOffice {self.current} is up to date."
 
 
+DEFAULT_GITHUB_REPO = "https://github.com/ABDULLAH-AMJID/MyOffice"
+
+
 def update_url() -> str:
-    return cfg().get("update.url", "") or cfg().get("servers.update", "")
+    return (cfg().get("update.url", "") or cfg().get("servers.update", "") or DEFAULT_GITHUB_REPO).strip()
 
 
 def resolve_manifest_url(raw: str) -> str:
@@ -228,7 +231,48 @@ def check_for_update(url: str | None = None, force: bool = False, timeout: int =
     return info
 
 
+def _format_speed_and_eta(done: int, total: int, elapsed: float) -> str:
+    speed = done / max(elapsed, 0.05)
+    if speed >= 1024 * 1024:
+        spd_str = f"{speed / (1024 * 1024):.2f} MB/s"
+    else:
+        spd_str = f"{max(1, int(speed / 1024))} KB/s"
+    if total > 0:
+        done_mb = done / (1024 * 1024)
+        tot_mb = total / (1024 * 1024)
+        size_str = (
+            f"{done_mb:.2f} / {tot_mb:.2f} MB"
+            if total >= 1024 * 1024
+            else f"{done // 1024:,} / {max(1, total // 1024):,} KB"
+        )
+        rem = max(0, int((total - done) / max(speed, 1.0)))
+        return f"{size_str}  •  {spd_str}  •  ~{rem}s left"
+    return f"{done // 1024:,} KB  •  {spd_str}"
+
+
+def _probe_http_range(url: str, headers: dict, timeout: int = 20) -> tuple[str, int, bool]:
+    """Resolve final CDN redirect URL once & check whether server supports HTTP 206 Range requests."""
+    import requests
+
+    probe_headers = {**headers, "Range": "bytes=0-0", "Accept-Encoding": "identity"}
+    with requests.get(url, headers=probe_headers, stream=True, allow_redirects=True, timeout=timeout) as r:
+        r.raise_for_status()
+        final_url = r.url or url
+        cr = r.headers.get("Content-Range", "")
+        if r.status_code == 206 and "/" in cr:
+            try:
+                total = int(cr.rsplit("/", 1)[1].strip())
+                return final_url, total, True
+            except ValueError:
+                pass
+        total = int(r.headers.get("Content-Length") or 0)
+        return final_url, total, False
+
+
 def download_update(info: UpdateInfo, dest_dir: str | None = None, progress=None, is_cancelled=None) -> str:
+    """High-speed verified downloader using 6x parallel HTTP Range streams for large files + SHA-256 check."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
     import requests
 
     if not info.url:
@@ -239,32 +283,105 @@ def download_update(info: UpdateInfo, dest_dir: str | None = None, progress=None
     name = os.path.basename(info.url.split("?")[0]) or f"MyOffice_Update_{info.latest}{default_ext}"
     path = os.path.join(dest_dir, name)
     tmp = path + ".partial"
-    h = hashlib.sha256()
+
+    if progress:
+        progress(1, "Connecting to GitHub CDN…")
 
     if info.url.startswith("file://") or os.path.exists(info.url):
         src = info.url[7:] if info.url.startswith("file://") else info.url
+        total = os.path.getsize(src)
+        done = 0
+        t0 = time.monotonic()
         with open(src, "rb") as fin, open(tmp, "wb") as fout:
             while True:
-                b = fin.read(1 << 20)
+                b = fin.read(1 << 18)
                 if not b:
                     break
                 fout.write(b)
-                h.update(b)
+                done += len(b)
+                if progress and total:
+                    progress(min(98, int(98 * done / total)), _format_speed_and_eta(done, total, time.monotonic() - t0))
     else:
-        with requests.get(info.url, stream=True, timeout=30, headers=_auth_headers()) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("Content-Length") or info.size or 0)
-            done = 0
-            with open(tmp, "wb") as fh:
-                for chunk in r.iter_content(1 << 16):
-                    if is_cancelled and is_cancelled():
-                        raise UpdateError("Download cancelled")
-                    fh.write(chunk)
-                    h.update(chunk)
-                    done += len(chunk)
-                    if progress and total:
-                        progress(int(100 * done / total), f"{done // 1024:,} / {total // 1024:,} KB")
+        hdrs = _auth_headers()
+        final_url, probed_total, supports_range = _probe_http_range(info.url, hdrs)
+        total = probed_total or int(info.size or 0)
+        t0 = time.monotonic()
 
+        if supports_range and total >= 262_144:
+            # 6x parallel HTTP 206 Partial Content turbo download (dramatically cuts high-RTT latency!)
+            num_streams = min(6, max(2, total // 262_144))
+            with open(tmp, "wb") as fh:
+                fh.truncate(total)
+            write_lock = threading.Lock()
+            state_lock = threading.Lock()
+            done_bytes = [0]
+            last_ui = [0.0]
+
+            part_size = (total + num_streams - 1) // num_streams
+            ranges = [
+                (i * part_size, min(total - 1, (i + 1) * part_size - 1))
+                for i in range(num_streams)
+                if i * part_size < total
+            ]
+
+            def fetch_slice(byte_range: tuple[int, int]) -> None:
+                start_b, end_b = byte_range
+                s_hdr = {**hdrs, "Range": f"bytes={start_b}-{end_b}", "Accept-Encoding": "identity"}
+                offset = start_b
+                with requests.get(final_url, headers=s_hdr, stream=True, timeout=30) as resp:
+                    if resp.status_code not in (200, 206):
+                        resp.raise_for_status()
+                    with open(tmp, "r+b") as out_fh:
+                        for chunk in resp.iter_content(65_536):
+                            if not chunk:
+                                continue
+                            if is_cancelled and is_cancelled():
+                                raise UpdateError("Download cancelled")
+                            with write_lock:
+                                out_fh.seek(offset)
+                                out_fh.write(chunk)
+                            offset += len(chunk)
+                            with state_lock:
+                                done_bytes[0] += len(chunk)
+                                now = time.monotonic()
+                                if progress and (now - last_ui[0] >= 0.08 or done_bytes[0] >= total):
+                                    last_ui[0] = now
+                                    pct = min(98, max(2, int(98 * done_bytes[0] / total)))
+                                    progress(pct, _format_speed_and_eta(done_bytes[0], total, now - t0))
+
+            with ThreadPoolExecutor(max_workers=len(ranges)) as pool:
+                futs = [pool.submit(fetch_slice, rg) for rg in ranges]
+                for fut in as_completed(futs):
+                    fut.result()
+        else:
+            with requests.get(final_url, stream=True, timeout=30, headers=hdrs) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("Content-Length") or total or 0)
+                done = 0
+                last_emit = 0.0
+                with open(tmp, "wb") as fh:
+                    for chunk in r.iter_content(65_536):
+                        if not chunk:
+                            continue
+                        if is_cancelled and is_cancelled():
+                            raise UpdateError("Download cancelled")
+                        fh.write(chunk)
+                        done += len(chunk)
+                        now = time.monotonic()
+                        if progress and (now - last_emit >= 0.08 or (total and done >= total)):
+                            last_emit = now
+                            pct = min(98, max(2, int(98 * done / total))) if total else 50
+                            progress(pct, _format_speed_and_eta(done, total, now - t0))
+
+    if progress:
+        progress(99, "Verifying SHA-256 cryptographic checksum…")
+    h = hashlib.sha256()
+    with open(tmp, "rb") as vf:
+        while True:
+            blk = vf.read(1 << 18)
+            if not blk:
+                break
+            h.update(blk)
     if info.sha256 and h.hexdigest().lower() != info.sha256.lower():
         try:
             os.unlink(tmp)
@@ -272,6 +389,8 @@ def download_update(info: UpdateInfo, dest_dir: str | None = None, progress=None
             pass
         raise UpdateError("The downloaded file failed SHA-256 integrity verification and was deleted.")
     os.replace(tmp, path)
+    if progress:
+        progress(100, "Verified & ready to install!")
     return path
 
 

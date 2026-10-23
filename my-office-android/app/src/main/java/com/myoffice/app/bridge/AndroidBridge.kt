@@ -1,5 +1,8 @@
 package com.myoffice.app.bridge
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -106,6 +109,56 @@ class AndroidBridge(private val activity: MainActivity) {
     @Synchronized
     private fun writeConfigJson(obj: JSONObject) {
         prefsFile.writeText(obj.toString(2), Charsets.UTF_8)
+    }
+
+    private fun emitOtaProgress(prog: JSONObject) {
+        runCatching {
+            activity.pushJsEvent("window.__onNativeOtaProgress", prog.toString())
+        }
+        runCatching {
+            val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            val chId = "myoffice_ota_progress"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val ch = NotificationChannel(chId, "Software Updates", NotificationManager.IMPORTANCE_LOW)
+                nm.createNotificationChannel(ch)
+            }
+            val phase = prog.optString("phase", "downloading")
+            if (phase in setOf("cancelled", "up_to_date")) {
+                nm.cancel(7701)
+                return
+            }
+            val pct = prog.optInt("percent", 0).coerceIn(0, 100)
+            val ver = prog.optString("version", "").ifBlank { "Update" }
+            val spd = prog.optLong("speedBps", 0L)
+            val spdTxt = when {
+                spd >= 1_048_576L -> String.format("%.2f MB/s", spd / 1_048_576.0)
+                spd > 0L -> "${spd / 1024L} KB/s"
+                else -> ""
+            }
+            val sub = when (phase) {
+                "checking" -> "Checking GitHub release manifest…"
+                "connecting" -> "Connecting to GitHub CDN…"
+                "downloading" -> "Downloading v$ver ($pct%)" + (if (spdTxt.isNotEmpty()) " • $spdTxt" else "")
+                "verifying" -> "Verifying SHA-256 signature…"
+                "installing_apk", "ready" -> "Download complete — tap Install when prompted"
+                "reloading_ui" -> "Applying v$ver live update…"
+                "error" -> prog.optString("error", "Update failed")
+                else -> "Updating MyOffice…"
+            }
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.Notification.Builder(activity, chId)
+            } else {
+                @Suppress("DEPRECATION")
+                android.app.Notification.Builder(activity)
+            }
+            val inProgress = phase in setOf("checking", "connecting", "downloading", "verifying")
+            builder.setSmallIcon(android.R.drawable.stat_sys_download_done.takeIf { !inProgress } ?: android.R.drawable.stat_sys_download)
+                .setContentTitle("MyOffice Update")
+                .setContentText(sub)
+                .setOngoing(inProgress)
+                .setProgress(100, pct, phase == "checking" || phase == "connecting")
+            nm.notify(7701, builder.build())
+        }
     }
 
     private fun resolveWorkspaceFile(relOrAbs: String): File {
@@ -244,22 +297,61 @@ class AndroidBridge(private val activity: MainActivity) {
                 val cfg = readConfigJson()
                 val repoUrl = args.optString("updateRepoUrl", cfg.optString("updateRepoUrl", "")).trim()
                 val readTok = keyStore.unsealSecret(cfg.optString("githubReadToken", ""))
-                val checkInfo = OtaUpdateManager.checkUpdate(activity.filesDir, repoUrl, readTok)
-                require(checkInfo.optBoolean("available", false)) {
-                    "Already up to date (${checkInfo.optString("currentVersion")})."
+                emitOtaProgress(JSONObject().put("phase", "checking").put("percent", 1))
+                val checkInfo = try {
+                    OtaUpdateManager.checkUpdate(activity.filesDir, repoUrl, readTok)
+                } catch (t: Throwable) {
+                    emitOtaProgress(JSONObject().put("phase", "error").put("percent", 0).put("error", t.message ?: "Manifest check failed"))
+                    throw t
                 }
-                val applied = OtaUpdateManager.downloadAndStageUpdate(
-                    activity.filesDir,
-                    activity.cacheDir,
-                    checkInfo,
-                    readTok
-                )
+                if (!checkInfo.optBoolean("available", false)) {
+                    val cur = checkInfo.optString("currentVersion")
+                    emitOtaProgress(JSONObject().put("phase", "up_to_date").put("percent", 100).put("version", cur))
+                    require(false) { "Already up to date (v$cur)." }
+                }
+                val applied = try {
+                    OtaUpdateManager.downloadAndStageUpdate(
+                        activity.filesDir,
+                        activity.cacheDir,
+                        checkInfo,
+                        readTok
+                    ) { prog -> emitOtaProgress(prog) }
+                } catch (t: Throwable) {
+                    val cancelled = (t.message ?: "").contains("cancelled", ignoreCase = true) ||
+                        (t.cause?.message ?: "").contains("cancelled", ignoreCase = true)
+                    emitOtaProgress(
+                        JSONObject()
+                            .put("phase", if (cancelled) "cancelled" else "error")
+                            .put("percent", 0)
+                            .put("error", if (cancelled) "Download cancelled." else (t.message ?: "Download failed"))
+                    )
+                    throw if (cancelled) IllegalStateException("Download cancelled.") else t
+                }
                 if (applied.optString("mode") == "apk") {
+                    emitOtaProgress(
+                        JSONObject()
+                            .put("phase", "installing_apk")
+                            .put("percent", 100)
+                            .put("version", applied.optString("version"))
+                            .put("mode", "apk")
+                    )
                     activity.installDownloadedApk(File(applied.getString("apkPath")))
                 } else {
-                    autoSyncScheduler.schedule({ activity.loadActiveEntryWithWatchdog() }, 180, TimeUnit.MILLISECONDS)
+                    emitOtaProgress(
+                        JSONObject()
+                            .put("phase", "reloading_ui")
+                            .put("percent", 100)
+                            .put("version", applied.optString("version"))
+                            .put("mode", "hotpatch")
+                    )
+                    autoSyncScheduler.schedule({ activity.loadActiveEntryWithWatchdog() }, 250, TimeUnit.MILLISECONDS)
                 }
                 applied
+            }
+
+            "cancelOtaUpdate" -> {
+                OtaUpdateManager.cancelActiveDownload()
+                JSONObject().put("ok", true)
             }
 
             "resetOtaFactory" -> {

@@ -2,7 +2,10 @@ package com.myoffice.app.update
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -11,19 +14,23 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipFile
 
 /**
  * Dual-Tier Cryptographically Verified Over-The-Air (OTA) Update Engine for Android:
- *  - Tier 1 (`hotpatch`): ~45 KB signed Web/UI bundle swapped atomically into `filesDir/ota/active/ui/`
+ *  - Tier 1 (`hotpatch`): ~50 KB signed Web/UI bundle swapped atomically into `filesDir/ota/active/ui/`
  *    and reloaded live in < 1 second with a 4.5s Native Boot Watchdog + Automatic Rollback.
- *  - Tier 2 (`apk`): Full signed `MyOffice_Android.apk` verified with SHA-256 and launched via
- *    Android `FileProvider` + `ACTION_VIEW` (`REQUEST_INSTALL_PACKAGES`) when native Kotlin changes.
+ *  - Tier 2 (`apk`): Full signed `MyOffice_Android.apk` downloaded via 6x Parallel HTTP Range Streams,
+ *    verified on disk with SHA-256, and launched via `FileProvider` + `ACTION_VIEW`.
  */
 object OtaUpdateManager {
 
-    const val NATIVE_VERSION_NAME = "1.6.1"
-    const val NATIVE_VERSION_CODE = 10601
+    const val NATIVE_VERSION_NAME = "1.6.2"
+    const val NATIVE_VERSION_CODE = 10602
     const val DEFAULT_REPO_URL = "https://github.com/ABDULLAH-AMJID/MyOffice"
 
     const val RELEASE_PUBLIC_KEY_B64 =
@@ -31,6 +38,13 @@ object OtaUpdateManager {
             "Q6QQHLfFqgRCaRGTHQxuDm9/MCrTuVZ17qJZeXfuRbIlEorzlqYcjGXB/Q=="
 
     private const val BUILTIN_ENTRY_URL = "file:///android_asset/ui/index.html"
+
+    @Volatile
+    private var currentCancelFlag: AtomicBoolean? = null
+
+    fun cancelActiveDownload() {
+        currentCancelFlag?.set(true)
+    }
 
     fun otaRoot(filesDir: File): File = File(filesDir, "ota").apply { mkdirs() }
 
@@ -69,9 +83,6 @@ object OtaUpdateManager {
         return if (activeIdx.isFile && patchedCode > NATIVE_VERSION_CODE) patchedCode else NATIVE_VERSION_CODE
     }
 
-    /**
-     * Resolves which UI entry URL `MainActivity.webView` should load, arming crash-recovery canary if hot-patched.
-     */
     @Synchronized
     fun resolveStartupEntryUrl(filesDir: File): Pair<String, Boolean> {
         val root = otaRoot(filesDir)
@@ -162,9 +173,6 @@ object OtaUpdateManager {
         return BUILTIN_ENTRY_URL
     }
 
-    /**
-     * Normalizes `owner/repo` or `https://github.com/owner/repo` into raw GitHub manifest URL.
-     */
     fun resolveManifestUrl(rawInput: String): String {
         val s = rawInput.trim()
         if (s.isEmpty()) return ""
@@ -198,9 +206,6 @@ object OtaUpdateManager {
         return URI(baseManifestUrl).resolve(assetUrl).toString()
     }
 
-    /**
-     * Exact byte-for-byte match to Python `json.dumps(clean, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
-     */
     fun canonicalPayloadBytes(manifest: JSONObject): ByteArray {
         val sb = StringBuilder()
         appendCanonicalJson(manifest, sb, skipSignatureRoot = true)
@@ -343,89 +348,355 @@ object OtaUpdateManager {
         filesDir: File,
         cacheDir: File,
         checkInfo: JSONObject,
-        readToken: String = ""
+        readToken: String = "",
+        onProgress: ((JSONObject) -> Unit)? = null,
     ): JSONObject {
         val url = checkInfo.getString("downloadUrl")
         val expectedSha = checkInfo.optString("sha256", "").lowercase()
         val mode = checkInfo.getString("mode")
         val latestVer = checkInfo.getString("latestVersion")
         val latestCode = checkInfo.optInt("latestCode", NATIVE_VERSION_CODE)
+        val knownSize = checkInfo.optLong("size", 0L)
 
-        val updatesCache = File(cacheDir, "updates").apply { mkdirs() }
-        val targetFile = File(updatesCache, if (mode == "hotpatch") "android-ui.zip" else "MyOffice_Update.apk")
-        val bytes = fetchBytes(url, readToken)
-        val actualSha = sha256Hex(bytes)
-        require(expectedSha.isEmpty() || actualSha == expectedSha) {
-            "SHA-256 verification failed (expected $expectedSha, got $actualSha)."
-        }
-        targetFile.writeBytes(bytes)
+        val cancelFlag = AtomicBoolean(false)
+        currentCancelFlag = cancelFlag
 
-        if (mode == "apk") {
-            return JSONObject()
-                .put("ok", true)
-                .put("mode", "apk")
-                .put("apkPath", targetFile.absolutePath)
-                .put("version", latestVer)
-        }
+        try {
+            val updatesCache = File(cacheDir, "updates").apply { mkdirs() }
+            val targetFile = File(updatesCache, if (mode == "hotpatch") "android-ui.zip" else "MyOffice_Update.apk")
+            val partialFile = File(updatesCache, targetFile.name + ".partial")
 
-        // Atomic extraction of verified Web/UI bundle into `ota/active/ui/`
-        val root = otaRoot(filesDir)
-        val staging = File(root, "staging").also { it.deleteRecursively() }
-        val stagingUi = File(staging, "ui").apply { mkdirs() }
-        val canonicalStaging = stagingUi.canonicalFile
+            downloadFastToFile(
+                urlStr = url,
+                readToken = readToken,
+                destFile = partialFile,
+                hintTotalBytes = knownSize,
+                cancelFlag = cancelFlag,
+                versionLabel = latestVer,
+                mode = mode,
+                onProgress = onProgress
+            )
 
-        ZipFile(targetFile).use { zip ->
-            val entries = zip.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                val rel = entry.name.replace('\\', '/')
-                require(rel.isNotEmpty() && !rel.startsWith("/") && ".." !in rel.split("/")) {
-                    "Blocked unsafe OTA archive entry: ${entry.name}"
-                }
-                val out = File(stagingUi, rel).canonicalFile
-                require(out.path.startsWith(canonicalStaging.path)) {
-                    "OTA entry escapes staging root: ${entry.name}"
-                }
-                if (entry.isDirectory) {
-                    out.mkdirs()
-                } else {
-                    out.parentFile?.mkdirs()
-                    zip.getInputStream(entry).use { input ->
-                        out.outputStream().use { fout -> input.copyTo(fout) }
+            onProgress?.invoke(
+                JSONObject()
+                    .put("phase", "verifying")
+                    .put("percent", 99)
+                    .put("downloaded", partialFile.length())
+                    .put("total", partialFile.length())
+                    .put("speedBps", 0L)
+                    .put("etaSec", 0)
+                    .put("version", latestVer)
+                    .put("mode", mode)
+            )
+
+            val actualSha = sha256FileHex(partialFile)
+            require(expectedSha.isEmpty() || actualSha == expectedSha) {
+                partialFile.delete()
+                "SHA-256 verification failed (expected $expectedSha, got $actualSha)."
+            }
+            if (targetFile.exists()) targetFile.delete()
+            check(partialFile.renameTo(targetFile)) {
+                partialFile.copyTo(targetFile, overwrite = true)
+                partialFile.delete()
+                true
+            }
+
+            if (mode == "apk") {
+                onProgress?.invoke(
+                    JSONObject()
+                        .put("phase", "ready")
+                        .put("percent", 100)
+                        .put("downloaded", targetFile.length())
+                        .put("total", targetFile.length())
+                        .put("speedBps", 0L)
+                        .put("etaSec", 0)
+                        .put("version", latestVer)
+                        .put("mode", "apk")
+                )
+                return JSONObject()
+                    .put("ok", true)
+                    .put("mode", "apk")
+                    .put("apkPath", targetFile.absolutePath)
+                    .put("version", latestVer)
+            }
+
+            // Atomic extraction of verified Web/UI bundle into `ota/active/ui/`
+            val root = otaRoot(filesDir)
+            val staging = File(root, "staging").also { it.deleteRecursively() }
+            val stagingUi = File(staging, "ui").apply { mkdirs() }
+            val canonicalStaging = stagingUi.canonicalFile
+
+            ZipFile(targetFile).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val rel = entry.name.replace('\\', '/')
+                    require(rel.isNotEmpty() && !rel.startsWith("/") && ".." !in rel.split("/")) {
+                        "Blocked unsafe OTA archive entry: ${entry.name}"
+                    }
+                    val out = File(stagingUi, rel).canonicalFile
+                    require(out.path.startsWith(canonicalStaging.path)) {
+                        "OTA entry escapes staging root: ${entry.name}"
+                    }
+                    if (entry.isDirectory) {
+                        out.mkdirs()
+                    } else {
+                        out.parentFile?.mkdirs()
+                        zip.getInputStream(entry).use { input ->
+                            out.outputStream().use { fout -> input.copyTo(fout) }
+                        }
                     }
                 }
             }
+            require(File(stagingUi, "index.html").isFile) { "Invalid UI bundle: missing index.html" }
+
+            File(staging, "ota_meta.json").writeText(
+                JSONObject().put("version", latestVer).put("versionCode", latestCode).toString(2),
+                Charsets.UTF_8
+            )
+
+            val active = File(root, "active")
+            val previous = File(root, "previous")
+            previous.deleteRecursively()
+            if (active.exists()) active.renameTo(previous)
+            staging.renameTo(active)
+
+            writeState(
+                filesDir,
+                JSONObject()
+                    .put("activeVersion", latestVer)
+                    .put("activeCode", latestCode)
+                    .put("bootInProgress", false)
+                    .put("bootAttempts", 0)
+                    .put("healthy", true)
+                    .put("appliedAt", System.currentTimeMillis() / 1000)
+            )
+
+            onProgress?.invoke(
+                JSONObject()
+                    .put("phase", "ready")
+                    .put("percent", 100)
+                    .put("downloaded", targetFile.length())
+                    .put("total", targetFile.length())
+                    .put("speedBps", 0L)
+                    .put("etaSec", 0)
+                    .put("version", latestVer)
+                    .put("mode", "hotpatch")
+            )
+
+            return JSONObject()
+                .put("ok", true)
+                .put("mode", "hotpatch")
+                .put("entryUrl", "file://${File(active, "ui/index.html").absolutePath}")
+                .put("version", latestVer)
+                .put("versionCode", latestCode)
+        } finally {
+            if (currentCancelFlag === cancelFlag) currentCancelFlag = null
         }
-        require(File(stagingUi, "index.html").isFile) { "Invalid UI bundle: missing index.html" }
+    }
 
-        File(staging, "ota_meta.json").writeText(
-            JSONObject().put("version", latestVer).put("versionCode", latestCode).toString(2),
-            Charsets.UTF_8
-        )
+    private data class ProbeResult(
+        val finalUrl: String,
+        val totalBytes: Long,
+        val supportsRange: Boolean,
+    )
 
-        val active = File(root, "active")
-        val previous = File(root, "previous")
-        previous.deleteRecursively()
-        if (active.exists()) active.renameTo(previous)
-        staging.renameTo(active)
+    private fun followRedirectsAndProbe(urlStr: String, readToken: String): ProbeResult {
+        var curUrl = urlStr
+        repeat(6) {
+            val conn = (URL(curUrl).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 12_000
+                readTimeout = 20_000
+                useCaches = false
+                setRequestProperty("Range", "bytes=0-0")
+                setRequestProperty("Accept-Encoding", "identity")
+                setRequestProperty("User-Agent", "MyOffice-Android/$NATIVE_VERSION_NAME")
+                if (readToken.isNotBlank() && ("github.com" in curUrl || "githubusercontent.com" in curUrl || "127.0.0.1" in curUrl || "localhost" in curUrl)) {
+                    setRequestProperty("Authorization", "Bearer ${readToken.trim()}")
+                }
+            }
+            try {
+                val code = conn.responseCode
+                if (code in listOf(301, 302, 303, 307, 308)) {
+                    val loc = conn.getHeaderField("Location") ?: break
+                    curUrl = URL(URL(curUrl), loc).toString()
+                    return@repeat
+                }
+                val cr = conn.getHeaderField("Content-Range") ?: ""
+                if (code == 206 && '/' in cr) {
+                    val total = cr.substringAfterLast('/').trim().toLongOrNull() ?: 0L
+                    return ProbeResult(curUrl, total, total > 0L)
+                }
+                val len = conn.contentLengthLong.takeIf { it > 0L } ?: 0L
+                return ProbeResult(curUrl, len, false)
+            } finally {
+                conn.disconnect()
+            }
+        }
+        return ProbeResult(curUrl, 0L, false)
+    }
 
-        writeState(
-            filesDir,
+    /**
+     * Multi-Connection Segmented HTTP Range Turbo Downloader (`6x parallel TCP streams` for files >= 256 KB).
+     * Eliminates high-RTT TCP window bottleneck on intercontinental CDN links (e.g. Pakistan <-> AWS S3 US-East).
+     */
+    fun downloadFastToFile(
+        urlStr: String,
+        readToken: String,
+        destFile: File,
+        hintTotalBytes: Long = 0L,
+        cancelFlag: AtomicBoolean = AtomicBoolean(false),
+        versionLabel: String = "",
+        mode: String = "apk",
+        onProgress: ((JSONObject) -> Unit)? = null,
+    ) {
+        if (urlStr.startsWith("file:")) {
+            val src = File(URI(urlStr))
+            src.copyTo(destFile, overwrite = true)
+            onProgress?.invoke(
+                JSONObject()
+                    .put("phase", "downloading")
+                    .put("percent", 98)
+                    .put("downloaded", destFile.length())
+                    .put("total", destFile.length())
+                    .put("speedBps", destFile.length() * 10L)
+                    .put("etaSec", 0)
+                    .put("turboStreams", 1)
+                    .put("version", versionLabel)
+                    .put("mode", mode)
+            )
+            return
+        }
+
+        onProgress?.invoke(
             JSONObject()
-                .put("activeVersion", latestVer)
-                .put("activeCode", latestCode)
-                .put("bootInProgress", false)
-                .put("bootAttempts", 0)
-                .put("healthy", true)
-                .put("appliedAt", System.currentTimeMillis() / 1000)
+                .put("phase", "connecting")
+                .put("percent", 2)
+                .put("downloaded", 0L)
+                .put("total", hintTotalBytes)
+                .put("speedBps", 0L)
+                .put("etaSec", -1)
+                .put("turboStreams", 6)
+                .put("version", versionLabel)
+                .put("mode", mode)
         )
 
-        return JSONObject()
-            .put("ok", true)
-            .put("mode", "hotpatch")
-            .put("entryUrl", "file://${File(active, "ui/index.html").absolutePath}")
-            .put("version", latestVer)
-            .put("versionCode", latestCode)
+        val probe = followRedirectsAndProbe(urlStr, readToken)
+        val total = if (probe.totalBytes > 0L) probe.totalBytes else hintTotalBytes
+        val t0 = System.nanoTime()
+        val lastEmitMs = AtomicLong(0L)
+
+        fun emitProgress(done: Long, streams: Int, force: Boolean = false) {
+            val nowMs = System.currentTimeMillis()
+            val prev = lastEmitMs.get()
+            if (!force && nowMs - prev < 80L) return
+            if (!lastEmitMs.compareAndSet(prev, nowMs) && !force) return
+            val elapsedSec = ((System.nanoTime() - t0) / 1_000_000_000.0).coerceAtLeast(0.05)
+            val speed = (done / elapsedSec).toLong()
+            val pct = if (total > 0L) ((done * 98L) / total).toInt().coerceIn(2, 98) else 50
+            val eta = if (total > done && speed > 0L) ((total - done) / speed).toInt() else 0
+            onProgress?.invoke(
+                JSONObject()
+                    .put("phase", "downloading")
+                    .put("percent", pct)
+                    .put("downloaded", done)
+                    .put("total", total)
+                    .put("speedBps", speed)
+                    .put("etaSec", eta)
+                    .put("turboStreams", streams)
+                    .put("version", versionLabel)
+                    .put("mode", mode)
+            )
+        }
+
+        if (probe.supportsRange && total >= 262_144L) {
+            val numStreams = (total / 262_144L).toInt().coerceIn(2, 6)
+            RandomAccessFile(destFile, "rw").use { it.setLength(total) }
+            val fileLock = Any()
+            val downloadedBytes = AtomicLong(0L)
+            val partSize = (total + numStreams - 1L) / numStreams
+            val ranges = (0 until numStreams).mapNotNull { i ->
+                val startB = i * partSize
+                if (startB >= total) null else startB to minOf(total - 1L, (i + 1) * partSize - 1L)
+            }
+
+            val pool = Executors.newFixedThreadPool(ranges.size)
+            try {
+                val tasks = ranges.map { (startB, endB) ->
+                    Callable<Unit> {
+                        val conn = (URL(probe.finalUrl).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = 15_000
+                            readTimeout = 30_000
+                            useCaches = false
+                            setRequestProperty("Range", "bytes=$startB-$endB")
+                            setRequestProperty("Accept-Encoding", "identity")
+                            setRequestProperty("User-Agent", "MyOffice-Android/$NATIVE_VERSION_NAME")
+                        }
+                        try {
+                            val code = conn.responseCode
+                            require(code == 206 || code == 200) { "HTTP $code during range slice $startB-$endB" }
+                            var writePos = startB
+                            val buf = ByteArray(65_536)
+                            RandomAccessFile(destFile, "rw").use { raf ->
+                                BufferedInputStream(conn.inputStream, 65_536).use { input ->
+                                    while (true) {
+                                        if (cancelFlag.get()) throw InterruptedException("Download cancelled")
+                                        val n = input.read(buf)
+                                        if (n <= 0) break
+                                        synchronized(fileLock) {
+                                            raf.seek(writePos)
+                                            raf.write(buf, 0, n)
+                                        }
+                                        writePos += n
+                                        val curDone = downloadedBytes.addAndGet(n.toLong())
+                                        emitProgress(curDone, ranges.size, force = curDone >= total)
+                                    }
+                                }
+                            }
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }
+                }
+                val futures = pool.invokeAll(tasks)
+                for (f in futures) {
+                    f.get()
+                }
+            } finally {
+                pool.shutdownNow()
+            }
+            return
+        }
+
+        // Fallback single-connection streaming with 64 KB buffered reads + live 80ms progress!
+        val conn = (URL(probe.finalUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            useCaches = false
+            setRequestProperty("Accept-Encoding", "identity")
+            setRequestProperty("User-Agent", "MyOffice-Android/$NATIVE_VERSION_NAME")
+        }
+        try {
+            val code = conn.responseCode
+            require(code in 200..299) { "HTTP $code while downloading update" }
+            val buf = ByteArray(65_536)
+            var done = 0L
+            destFile.outputStream().buffered(65_536).use { fout ->
+                BufferedInputStream(conn.inputStream, 65_536).use { input ->
+                    while (true) {
+                        if (cancelFlag.get()) throw InterruptedException("Download cancelled")
+                        val n = input.read(buf)
+                        if (n <= 0) break
+                        fout.write(buf, 0, n)
+                        done += n
+                        emitProgress(done, 1, force = (total > 0L && done >= total))
+                    }
+                }
+            }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun withCacheBuster(url: String): String {
@@ -440,7 +711,7 @@ object OtaUpdateManager {
         }
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
-            readTimeout = 30_000
+            readTimeout = 25_000
             useCaches = false
             setRequestProperty("Cache-Control", "no-cache")
             setRequestProperty("User-Agent", "MyOffice-Android/$NATIVE_VERSION_NAME")
@@ -451,10 +722,23 @@ object OtaUpdateManager {
         return try {
             val code = conn.responseCode
             require(code in 200..299) { "HTTP $code while fetching $urlStr" }
-            conn.inputStream.use { it.readBytes() }
+            BufferedInputStream(conn.inputStream, 32_768).use { it.readBytes() }
         } finally {
             conn.disconnect()
         }
+    }
+
+    fun sha256FileHex(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val buf = ByteArray(65_536)
+        FileInputStream(file).use { fis ->
+            while (true) {
+                val n = fis.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     fun sha256Hex(data: ByteArray): String =

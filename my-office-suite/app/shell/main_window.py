@@ -11,8 +11,8 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
-                               QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QStackedWidget,
-                               QTabBar, QToolButton, QVBoxLayout, QWidget)
+                               QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
+                               QPushButton, QStackedWidget, QTabBar, QToolButton, QVBoxLayout, QWidget)
 
 from app.services import backup
 from app.services.config import cfg
@@ -175,7 +175,39 @@ class MainWindow(QMainWindow):
             b.setAutoRaise(True)
             b.clicked.connect(fn)
             tl.addWidget(b)
+        self.update_top_btn = QToolButton()
+        self.update_top_btn.setIcon(icon("update"))
+        self.update_top_btn.setText(_t("Update"))
+        self.update_top_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.update_top_btn.setToolTip(_t("Check & Install MyOffice Updates from GitHub (Ctrl+Alt+U)"))
+        self.update_top_btn.setAutoRaise(True)
+        self.update_top_btn.clicked.connect(self.open_update_dialog)
+        tl.addWidget(self.update_top_btn)
+        self._pending_update_info = None
         lay.addWidget(top)
+        # Non-blocking top banner bar whenever a signed GitHub update is available
+        self.update_banner = QWidget()
+        self.update_banner.setVisible(False)
+        self.update_banner.setStyleSheet(
+            "background: #EFF6FF; border-bottom: 1px solid #93C5FD; padding: 4px 10px;"
+        )
+        ub_lay = QHBoxLayout(self.update_banner)
+        ub_lay.setContentsMargins(10, 4, 10, 4)
+        ub_lay.setSpacing(10)
+        self.update_banner_lbl = QLabel("")
+        self.update_banner_lbl.setStyleSheet("color: #1E3A8A; font-weight: 600;")
+        ub_lay.addWidget(self.update_banner_lbl, 1)
+        ub_install = QPushButton(_t("Install Update Now"))
+        ub_install.setStyleSheet(
+            "background: #2563EB; color: #FFFFFF; font-weight: 700; padding: 4px 12px; border-radius: 4px;"
+        )
+        ub_install.clicked.connect(self.open_update_dialog)
+        ub_dismiss = QToolButton()
+        ub_dismiss.setText("×")
+        ub_dismiss.clicked.connect(lambda: self.update_banner.setVisible(False))
+        ub_lay.addWidget(ub_install)
+        ub_lay.addWidget(ub_dismiss)
+        lay.addWidget(self.update_banner)
         self.ribbon_stack = RibbonStack()
         self.ribbon_stack.setSizePolicy(self.ribbon_stack.sizePolicy().horizontalPolicy(),
                                         self.ribbon_stack.sizePolicy().verticalPolicy().Maximum)
@@ -731,6 +763,7 @@ class MainWindow(QMainWindow):
         theme.addAction(icon("sun"), _t("Light"), lambda: self.set_theme("light"))
         theme.addAction(icon("moon"), _t("Dark"), lambda: self.set_theme("dark"))
         m.addAction(icon("settings"), _t("Settings\u2026"), self.open_settings)
+        m.addAction(icon("update"), _t("Check for Updates\u2026"), self.open_update_dialog)
         m.addAction(icon("info"), _t("About MyOffice"), self.show_about)
         m.addAction(icon("uninstall"), _t("Uninstall MyOffice\u2026"), self.uninstall_app)
         m.addSeparator()
@@ -763,6 +796,7 @@ class MainWindow(QMainWindow):
         for idx in range(1, 10):
             sc(f"Ctrl+{idx}", lambda _c=False, k=idx - 1: self.tabs.setCurrentIndex(min(k, self.tabs.count() - 1)))
         sc("F12", self.save_as_current)
+        sc("Ctrl+Alt+U", self.open_update_dialog)
 
     def _open_vault_file(self, vault_path: str) -> DocumentWidget | None:
         from PySide6.QtWidgets import QInputDialog, QLineEdit
@@ -1249,8 +1283,35 @@ class MainWindow(QMainWindow):
                 self.sync_service = start_background_sync(self)
             except Exception as exc:
                 log.error("Cloud sync failed to start: %s", exc)
-        if cfg().get("update.check_on_startup", False):
-            QTimer.singleShot(4000, self._startup_update_check)
+        # Auto-heal empty update.url from older settings.json and run automatic startup check by default!
+        if not (cfg().get("update.url", "") or "").strip():
+            cfg().set("update.url", "https://github.com/ABDULLAH-AMJID/MyOffice", save=True)
+        if cfg().get("update.check_on_startup", True):
+            QTimer.singleShot(1800, self._startup_update_check)
+
+    def open_update_dialog(self):
+        from app.tools.update_dialog import open_dialog
+
+        open_dialog(self, preloaded_info=self._pending_update_info)
+
+    def show_update_available_indicator(self, info):
+        self._pending_update_info = info
+        if info and getattr(info, "available", False):
+            self.update_top_btn.setText(_t("Update v{0}").format(info.latest))
+            self.update_top_btn.setStyleSheet(
+                "background: #16A34A; color: #FFFFFF; font-weight: 700; border-radius: 4px; padding: 2px 8px;"
+            )
+            mode_txt = _t("Instant <1s Patch") if info.install_mode == "hotpatch" else _t("Full Installer")
+            self.update_banner_lbl.setText(
+                _t("MyOffice v{0} is ready ({1}) — {2}").format(
+                    info.latest, mode_txt, (info.notes or "")[:90]
+                )
+            )
+            self.update_banner.setVisible(True)
+        else:
+            self.update_top_btn.setText(_t("Update"))
+            self.update_top_btn.setStyleSheet("")
+            self.update_banner.setVisible(False)
 
     def _startup_update_check(self):
         from app.services import firewall

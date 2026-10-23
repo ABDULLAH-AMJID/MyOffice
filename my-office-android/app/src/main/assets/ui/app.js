@@ -2386,21 +2386,42 @@
     },
 
     async applyOtaNow() {
-      const repo = document.getElementById("otaRepoInput")?.value.trim() ?? state.config.updateRepoUrl ?? "";
+      const repo = (document.getElementById("otaRepoInput")?.value.trim() || state.config.updateRepoUrl || "https://github.com/ABDULLAH-AMJID/MyOffice").trim();
       const tok = document.getElementById("otaTokenInput")?.value.trim() || "";
-      const msgEl = document.getElementById("otaStatusMsg");
       if (!repo) { toast("Enter your GitHub repository URL first"); return; }
+
+      // Instant 0ms live progress sheet + Home banner update BEFORE starting network call!
+      const targetVer = state.pendingOta?.latestVersion || "Latest";
+      const isHotpatch = state.pendingOta?.mode === "hotpatch";
+      openOtaLiveProgressModal(targetVer, isHotpatch);
+      handleNativeOtaProgress({
+        phase: "connecting",
+        percent: 2,
+        downloaded: 0,
+        total: state.pendingOta?.size || 0,
+        speedBps: 0,
+        etaSec: -1,
+        version: targetVer,
+        mode: state.pendingOta?.mode || "apk"
+      });
+
       try {
         if (tok) await nativeCall("saveSettings", { updateRepoUrl: repo, githubReadToken: tok });
         else await nativeCall("saveSettings", { updateRepoUrl: repo });
         state.config.updateRepoUrl = repo;
-        if (msgEl) msgEl.textContent = "Downloading & verifying SHA-256 + ECDSA signature...";
         const applied = await nativeCall("applyOtaUpdate", { updateRepoUrl: repo });
         toast(`Updating to v${applied.version}...`);
       } catch (e) {
-        if (msgEl) msgEl.textContent = e.message;
-        else toast(e.message);
+        handleNativeOtaProgress({ phase: "error", percent: 0, error: e.message || String(e) });
       }
+    },
+
+    async cancelOtaDownloadNow() {
+      const btn = document.getElementById("otaCancelBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "Cancelling..."; }
+      try {
+        await nativeCall("cancelOtaUpdate", {});
+      } catch (_) {}
     },
 
     async resetOtaFactoryNow() {
@@ -2491,6 +2512,102 @@
       `</div>`;
   }
 
+  function formatBytesCompact(n) {
+    if (!n || n <= 0) return "0 KB";
+    if (n >= 1048576) return (n / 1048576).toFixed(2) + " MB";
+    return Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+
+  function openOtaLiveProgressModal(targetVer, isHotpatch) {
+    showModal(`
+      <h3 class="modal-title" id="otaProgTitle">Updating MyOffice to v${esc(targetVer)}</h3>
+      <p class="section-desc" id="otaProgPhase" style="font-weight:600;color:var(--ink);">Connecting to GitHub CDN (6x Turbo Parallel Streams)...</p>
+      <div style="width:100%;height:10px;background:var(--surface-muted,#E5E7EB);border-radius:999px;overflow:hidden;margin:12px 0 8px;">
+        <div id="otaProgBarFill" style="height:100%;width:2%;background:var(--accent,#2563EB);border-radius:999px;transition:width 0.14s ease;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-secondary);font-variant-numeric:tabular-nums;">
+        <span id="otaProgBytes">Starting download...</span>
+        <span id="otaProgSpeed" style="font-weight:700;color:var(--accent,#2563EB);">2%</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--ink-muted,#6B7280);margin-top:8px;">
+        ${isHotpatch ? "Instant verified UI patch — reloads automatically with zero data loss." : "6x parallel stream download + SHA-256 verification. Android will prompt 'Update' as soon as download completes."}
+      </div>
+      <div id="otaProgActions" style="margin-top:14px;display:flex;gap:8px;">
+        <button class="btn btn-subtle btn-block" id="otaCancelBtn" onclick="App.cancelOtaDownloadNow()">Cancel Download</button>
+      </div>
+    `);
+  }
+
+  function handleNativeOtaProgress(rawEvt) {
+    const p = (typeof rawEvt === "string") ? JSON.parse(rawEvt) : (rawEvt || {});
+    const pct = Math.max(0, Math.min(100, Number(p.percent || 0)));
+    const phase = p.phase || "downloading";
+    const done = Number(p.downloaded || 0);
+    const total = Number(p.total || 0);
+    const spd = Number(p.speedBps || 0);
+    const eta = Number(p.etaSec ?? -1);
+    const streams = Number(p.turboStreams || 6);
+
+    const spdStr = spd >= 1048576
+      ? (spd / 1048576).toFixed(2) + " MB/s"
+      : (spd > 0 ? Math.max(1, Math.round(spd / 1024)) + " KB/s" : "");
+    const etaStr = (eta > 0 && phase === "downloading") ? ` • ~${eta}s left` : "";
+
+    let phaseLabel = "Preparing update...";
+    if (phase === "checking") phaseLabel = "Checking signed GitHub release manifest...";
+    else if (phase === "connecting") phaseLabel = `Connecting to GitHub CDN (${streams}x Turbo Parallel Streams)...`;
+    else if (phase === "downloading") phaseLabel = `Downloading update (${streams > 1 ? streams + "x Parallel Turbo" : "Direct Stream"})...`;
+    else if (phase === "verifying") phaseLabel = "Verifying SHA-256 & ECDSA P-256 cryptographic signature...";
+    else if (phase === "installing_apk" || phase === "ready") phaseLabel = "Download verified 100%! Opening Android Installer...";
+    else if (phase === "reloading_ui") phaseLabel = "Update verified 100%! Activating live update now...";
+    else if (phase === "cancelled") phaseLabel = "Update download cancelled.";
+    else if (phase === "error") phaseLabel = "Update error: " + (p.error || "Network error");
+
+    const titleEl = document.getElementById("otaProgTitle");
+    const phaseEl = document.getElementById("otaProgPhase");
+    const fillEl = document.getElementById("otaProgBarFill");
+    const bytesEl = document.getElementById("otaProgBytes");
+    const speedEl = document.getElementById("otaProgSpeed");
+    const actionsEl = document.getElementById("otaProgActions");
+
+    if (titleEl && p.version) titleEl.textContent = `Updating MyOffice to v${p.version}`;
+    if (phaseEl) phaseEl.textContent = phaseLabel;
+    if (fillEl) {
+      fillEl.style.width = `${pct}%`;
+      fillEl.style.background = phase === "error" ? "#DC2626" : (pct >= 100 ? "#16A34A" : "var(--accent,#2563EB)");
+    }
+    if (bytesEl) {
+      bytesEl.textContent = total > 0
+        ? `${formatBytesCompact(done)} / ${formatBytesCompact(total)}${etaStr}`
+        : (done > 0 ? `${formatBytesCompact(done)} downloaded` : phaseLabel);
+    }
+    if (speedEl) {
+      speedEl.textContent = spdStr ? `${spdStr} (${pct}%)` : `${pct}%`;
+    }
+    if (actionsEl && (phase === "error" || phase === "cancelled" || phase === "installing_apk")) {
+      actionsEl.innerHTML = phase === "installing_apk"
+        ? `<button class="btn btn-primary btn-block" onclick="App.closeModalSheet && App.closeModalSheet()">Done</button>`
+        : `<button class="btn btn-subtle btn-block" onclick="App.applyOtaNow()">Retry Update</button>`;
+    }
+
+    // Also mirror live status onto the Home Screen Banner so even if user dismisses modal, banner shows live %!
+    const bannerBtn = document.getElementById("otaBannerInstallBtn");
+    const bannerSub = document.getElementById("otaBannerSub");
+    if (bannerBtn) {
+      if (phase === "downloading" || phase === "connecting" || phase === "checking" || phase === "verifying") {
+        bannerBtn.disabled = true;
+        bannerBtn.textContent = `${pct}%`;
+      } else {
+        bannerBtn.disabled = false;
+        bannerBtn.textContent = "Install";
+      }
+    }
+    if (bannerSub && (phase === "downloading" || phase === "verifying" || phase === "connecting")) {
+      bannerSub.textContent = `${total > 0 ? formatBytesCompact(done) + " / " + formatBytesCompact(total) : phaseLabel}${spdStr ? " • " + spdStr : ""}`;
+    }
+  }
+  window.__onNativeOtaProgress = handleNativeOtaProgress;
+
   function renderOtaBanner() {
     let banner = document.getElementById("otaBannerCard");
     if (!state.pendingOta || !state.pendingOta.available) {
@@ -2505,12 +2622,13 @@
       const home = document.getElementById("tabHome");
       home.insertBefore(banner, home.firstChild);
     }
+    const szLabel = state.pendingOta.size > 0 ? ` (${formatBytesCompact(state.pendingOta.size)})` : "";
     banner.innerHTML = `
-      <div>
-        <div style="font-size:13.5px;font-weight:700;color:var(--accent);">Update v${esc(state.pendingOta.latestVersion)} Available</div>
-        <div style="font-size:12px;color:var(--ink-secondary);">${esc(state.pendingOta.notes || "Signed GitHub update ready")}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13.5px;font-weight:700;color:var(--accent);">Update v${esc(state.pendingOta.latestVersion)} Available${esc(szLabel)}</div>
+        <div id="otaBannerSub" style="font-size:12px;color:var(--ink-secondary);">${esc(state.pendingOta.notes || "Signed GitHub update ready")}</div>
       </div>
-      <button class="btn btn-compact btn-primary" onclick="App.applyOtaNow()">Install</button>
+      <button id="otaBannerInstallBtn" class="btn btn-compact btn-primary" onclick="App.applyOtaNow()">Install</button>
     `;
   }
 

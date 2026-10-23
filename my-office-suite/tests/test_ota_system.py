@@ -130,3 +130,86 @@ def test_live_http_signed_ota_hotpatch_tamper_rejection_and_rollback(tmp_path, m
     finally:
         ota_runtime.uninstall_hotpatch_finder()
         httpd.shutdown()
+
+
+def test_v162_parallel_range_turbo_download_progress_and_mainwindow_update_pill(tmp_path: Path, monkeypatch):
+    """Verify:
+      1. 6x parallel HTTP 206 Range download reconstructs an exact 1.5 MB binary byte-for-byte,
+         triggers multiple concurrent Range requests, emits live progress callbacks up to 100%,
+         and passes SHA-256 verification.
+      2. MainWindow exposes visible top-bar `update_top_btn`, top-banner `update_banner`,
+         and auto-seeds `DEFAULT_GITHUB_REPO` when `update.url` is empty!
+    """
+    import hashlib
+    import http.server
+    from PySide6.QtWidgets import QApplication
+    from app.services import updater
+    from app.shell.main_window import MainWindow
+
+    monkeypatch.setenv("MYOFFICE_CONFIG_DIR", str(tmp_path / "cfg"))
+    _app = QApplication.instance() or QApplication([])
+
+    payload = (b"MYOFFICE_TURBO_CHUNK_0123456789ABCDEF" * 45_000)  # ~1.66 MB (> 6 x 256 KB)
+    expected_sha = hashlib.sha256(payload).hexdigest()
+    seen_ranges: list[str] = []
+
+    class RangeHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            rng = self.headers.get("Range", "")
+            if rng.startswith("bytes="):
+                seen_ranges.append(rng)
+                s_str, e_str = rng[6:].split("-", 1)
+                start = int(s_str)
+                end = min(len(payload) - 1, int(e_str)) if e_str else len(payload) - 1
+                chunk = payload[start : end + 1]
+                self.send_response(206)
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Range", f"bytes {start}-{end}/{len(payload)}")
+                self.send_header("Content-Length", str(len(chunk)))
+                self.end_headers()
+                self.wfile.write(chunk)
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+        def log_message(self, *_args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RangeHandler)
+    port = srv.server_address[1]
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+
+    try:
+        info = updater.UpdateInfo(
+            current="1.6.1",
+            latest="1.6.2",
+            url=f"http://127.0.0.1:{port}/MyOffice_Setup.exe",
+            sha256=expected_sha,
+            size=len(payload),
+            notes="Turbo 6x parallel download + live progress UI",
+            install_mode="installer",
+            signed=True,
+        )
+        events: list[tuple[int, str]] = []
+        dl_path = updater.download_update(
+            info,
+            dest_dir=str(tmp_path / "dl"),
+            progress=lambda pct, msg: events.append((pct, msg)),
+        )
+        assert Path(dl_path).read_bytes() == payload
+        assert len(seen_ranges) >= 5, f"Expected parallel Range slices, got: {seen_ranges}"
+        assert any(p == 100 for p, _ in events)
+
+        mw = MainWindow()
+        assert hasattr(mw, "update_top_btn")
+        assert updater.update_url() == updater.DEFAULT_GITHUB_REPO
+        mw.show_update_available_indicator(info)
+        assert "1.6.2" in mw.update_top_btn.text()
+        assert not mw.update_banner.isHidden()
+        mw.close()
+    finally:
+        srv.shutdown()
+
