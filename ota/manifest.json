@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.2",
   "version_code": 10602,
-  "date": "2026-10-23T17:39:03Z",
+  "date": "2026-10-23T17:47:22Z",
   "notes": "v1.6.2 Live Download Progress Bar + 6x Parallel Turbo Speed + Top-Bar Windows Update Button",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -32,5 +32,5 @@
     "installer_sha256": "2df00bf42fd81f5cffaa4b20774712b71b168d407be9dac48b2011df959dd834",
     "installer_size": 122066588
   },
-  "signature": "MEUCICKD2B4o2QLp5ytkwfJ6vtGNAVmhEKFmmjHVMXWAsR8NAiEAleAMC5HU0TsKiQ8Wmd3ZVGZAUDNSIADnjU4UsDtYJfc="
+  "signature": "MEQCIBdXdGVTjD3sLFIHEF0svSjl/ul/7k/82mSF/0CErDjfAiA+31n8GXWhUBGsYjNrihzGnNgU6T8mgsLqAVJF1WyxRw=="
 }

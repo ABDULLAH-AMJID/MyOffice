@@ -503,7 +503,7 @@ object OtaUpdateManager {
 
     private fun followRedirectsAndProbe(urlStr: String, readToken: String): ProbeResult {
         var curUrl = urlStr
-        repeat(6) {
+        for (hop in 0 until 6) {
             val conn = (URL(curUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
                 connectTimeout = 12_000
@@ -521,7 +521,7 @@ object OtaUpdateManager {
                 if (code in listOf(301, 302, 303, 307, 308)) {
                     val loc = conn.getHeaderField("Location") ?: break
                     curUrl = URL(URL(curUrl), loc).toString()
-                    return@repeat
+                    continue
                 }
                 val cr = conn.getHeaderField("Content-Range") ?: ""
                 if (code == 206 && '/' in cr) {
