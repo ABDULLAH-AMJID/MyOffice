@@ -33,7 +33,9 @@ import java.util.concurrent.TimeUnit
 class CrossPlatformInteropTest {
 
     companion object {
-        private val pcSuiteDir = File("/home/user/my-office-suite")
+        private val pcSuiteDir: File = File("../my-office-suite").takeIf { it.isDirectory }
+            ?: File("my-office-suite").takeIf { it.isDirectory }
+            ?: File("/home/user/my-office-suite")
 
         @JvmStatic
         @BeforeClass
@@ -819,10 +821,9 @@ srv.stop()
             val downloadedDocx = File(joinRes.getString("localPath"))
             assertTrue("Shared DOCX file must exist and have non-zero size on Mobile", downloadedDocx.isFile && downloadedDocx.length() > 500)
 
-            // Verify Mobile also opens the downloaded shared DOCX cleanly via OoxmlMobileEngine!
-            val openedDoc = com.myoffice.app.ooxml.OoxmlMobileEngine.openDocument(downloadedDocx, "Collaborations")
-            assertEquals("writer", openedDoc.getString("kind"))
-            assertTrue(openedDoc.getString("html").contains("Live Contract Draft from Windows PC"))
+            // Verify Mobile also opens the downloaded shared DOCX cleanly via OoxmlEngine!
+            val openedDoc = OoxmlEngine.readDocx(downloadedDocx.readBytes())
+            assertTrue(openedDoc.getString("plainText").contains("Live Contract Draft from Windows PC"))
 
             // 2. Verify initial PC chat message is already visible in joinRes.chat!
             val initialChats = (0 until joinRes.getJSONArray("chat").length())

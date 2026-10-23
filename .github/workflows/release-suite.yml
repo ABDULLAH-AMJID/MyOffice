@@ -90,7 +90,7 @@ jobs:
           mkdir -p my-office-android/keystore /var/tmp/tmp
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > my-office-android/keystore/myoffice-release.jks
-          else
+          elif [ ! -f my-office-android/keystore/myoffice-release.jks ]; then
             keytool -genkeypair -v \
               -keystore my-office-android/keystore/myoffice-release.jks \
               -alias myoffice -keyalg RSA -keysize 2048 -validity 10000 \
@@ -100,6 +100,8 @@ jobs:
 
       - name: Run Android Cross-Platform JUnit Suite & Assemble Slim Release APK
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr ghostscript libpulse0 libxkbcommon0 libegl1 libgl1 libfontconfig1 libdbus-1-3
           python3 -m pip install --upgrade pip
           python3 -m pip install -r my-office-suite/requirements-dev.txt
           SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -109,7 +111,10 @@ jobs:
           export PYTHONPATH="$PWD/my-office-suite"
           gradle -p my-office-android \
             -Dorg.gradle.jvmargs="-Xms512m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" \
-            testDebugUnitTest assembleRelease -x lintVitalRelease
+            testDebugUnitTest --info
+          gradle -p my-office-android \
+            -Dorg.gradle.jvmargs="-Xms512m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" \
+            assembleRelease -x lintVitalRelease
           python3 - <<'EOF'
           import os, zipfile
           candidates = [
