@@ -444,12 +444,24 @@ def apply_hotpatch_zip(zip_path: str | Path, version: str, base_dir: Path | None
     return current
 
 
+def _refresh_shell_icons() -> None:
+    """After a hot-patch, re-point Explorer at the freshly delivered file-type artwork (Windows only)."""
+    try:  # pragma: no cover - Windows only
+        from app.services import register
+
+        register.sync_icon_mirror(force=True)
+        register.repair_stale_icon_registrations(force=True)
+    except Exception:
+        pass
+
+
 def install_update(path: str, info: UpdateInfo | None = None, restart: bool = True) -> str:
     """Apply live OTA hotpatch (`<1s`) OR launch native installer seamlessly."""
     is_zip = path.lower().endswith(".zip") or (info is not None and info.install_mode == "hotpatch")
     if is_zip:
         ver = info.latest if info and info.latest else effective_version()
         apply_hotpatch_zip(path, version=ver)
+        _refresh_shell_icons()
         if restart:
             if getattr(sys, "frozen", False):
                 subprocess.Popen([sys.executable], close_fds=True)

@@ -19,7 +19,38 @@ def app_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _ota_resource_root() -> Path | None:
+    """Root of the active signed OTA hot-patch, if any (``<ota>/current``)."""
+    env = os.environ.get("MYOFFICE_OTA_DIR", "").strip()
+    candidates = []
+    if env:
+        candidates.append(Path(env))
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        candidates.append(root / "MyOffice" / "ota")
+    elif sys.platform == "darwin":
+        candidates.append(Path.home() / "Library" / "Application Support" / "MyOffice" / "ota")
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        candidates.append(Path(xdg) / "MyOffice" / "ota")
+    for base in candidates:
+        cur = base / "current"
+        if (cur / "app").is_dir():
+            return cur
+    return None
+
+
 def resource_path(*parts: str) -> Path:
+    """Bundled resource (``resources/...``), with a signed OTA hot-patch taking precedence.
+
+    A hot-patch may ship new file-type icons, QSS themes, templates or language data; those land in
+    ``<ota>/current/resources`` and must win over the copy frozen inside the installed EXE.
+    """
+    patch_root = _ota_resource_root()
+    if patch_root is not None:
+        patched = patch_root.joinpath("resources", *parts)
+        if patched.exists():
+            return patched
     return app_root().joinpath("resources", *parts)
 
 

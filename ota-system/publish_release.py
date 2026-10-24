@@ -146,10 +146,14 @@ def package_windows_hotpatch_bundle(out_zip: Path) -> tuple[str, int, int]:
         if "__pycache__" not in p.parts:
             rel = p.relative_to(WINDOWS_SUITE_DIR).as_posix()
             entries.append((p, rel))
-    # Base EXE already ships static icons/fonts/qm; pack dynamic theme QSS + JSON resources
+    # Dynamic theme QSS + JSON resources, plus the file-type artwork: a hot-patch must be able to deliver
+    # new file icons (register.sync_icon_mirror copies them into %APPDATA%\MyOffice\icons) without a
+    # 116 MB installer download.
     res_dir = WINDOWS_SUITE_DIR / "resources"
     for p in res_dir.rglob("*"):
-        if p.is_file() and p.suffix.lower() in {".qss", ".json"}:
+        if p.is_file() and (p.suffix.lower() in {".qss", ".json"}
+                            or (p.parent.name == "app" and p.parent.parent.name == "icons"
+                                and p.suffix.lower() in {".ico", ".png"})):
             rel = p.relative_to(WINDOWS_SUITE_DIR).as_posix()
             entries.append((p, rel))
     digest, size = build_deterministic_zip(entries, out_zip)
@@ -176,6 +180,9 @@ def build_and_sign_ota(
     min_android_native_code: int = 10600,
     min_windows_binary_version: str = "1.0.0",
     base_override_url: str = "",
+    android_version: str = "",
+    android_code: int = 0,
+    android_apk_release_tag: str = "",
 ) -> dict:
     priv_key, pub_b64 = ensure_signing_keypair()
     OTA_OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -206,6 +213,17 @@ def build_and_sign_ota(
         except Exception:
             prev_manifest = {}
 
+    # A release may touch only one platform (e.g. v1.6.3 = new Windows Explorer file-type icons while the
+    # Android build is untouched).  In that case the Android descriptor keeps its own version/code and the
+    # APK link points at the release that actually carries the matching APK - never at a 404.
+    and_ver = (android_version or version).strip()
+    and_code = int(android_code or version_code)
+    android_pinned = and_ver != version
+    if android_pinned and android_apk_release_tag:
+        rel_base_android = f"https://github.com/{slug}/releases/download/{android_apk_release_tag}"
+    else:
+        rel_base_android = rel_base
+
     apk_local = WORKSPACE_ROOT / "MyOffice_Android.apk"
     exe_local = WORKSPACE_ROOT / "MyOffice_Setup.exe"
     if not exe_local.exists() and Path("/var/tmp/MyOffice_Setup.exe").exists():
@@ -232,14 +250,14 @@ def build_and_sign_ota(
         "size": exe_size,
         # Tier-1 + Tier-2 Android descriptor
         "android": {
-            "version": version,
-            "version_code": version_code,
+            "version": and_ver,
+            "version_code": and_code,
             "min_native_code": min_android_native_code,
             "bundle_url": f"{raw_base}/android-ui.zip",
             "bundle_sha256": and_sha,
             "bundle_size": and_size,
             "bundle_files": and_count,
-            "apk_url": f"{rel_base}/MyOffice_Android.apk",
+            "apk_url": f"{rel_base_android}/MyOffice_Android.apk",
             "apk_sha256": apk_sha,
             "apk_size": apk_size,
         },
@@ -335,6 +353,12 @@ def main() -> None:
     ap.add_argument("--branch", default="main")
     ap.add_argument("--min-android-code", type=int, default=10600)
     ap.add_argument("--min-windows-binary", default="1.0.0")
+    ap.add_argument("--android-version", default="",
+                    help="pin the Android descriptor to another version (Windows-only releases)")
+    ap.add_argument("--android-code", type=int, default=0,
+                    help="pin the Android versionCode (0 = same as --version-code)")
+    ap.add_argument("--android-apk-tag", default="",
+                    help="release tag that carries the pinned APK, e.g. v1.6.2")
     ap.add_argument("--token", default=os.environ.get("GITHUB_TOKEN", ""))
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--tag-binary-release", action="store_true")
@@ -348,6 +372,9 @@ def main() -> None:
         branch=args.branch,
         min_android_native_code=args.min_android_code,
         min_windows_binary_version=args.min_windows_binary,
+        android_version=args.android_version,
+        android_code=args.android_code,
+        android_apk_release_tag=args.android_apk_tag,
     )
     print(f"[OK] Signed OTA v{manifest['version']} ready:")
     print(f"     Android bundle : {manifest['android']['bundle_size']:,} bytes ({manifest['android']['bundle_sha256'][:16]}...)")

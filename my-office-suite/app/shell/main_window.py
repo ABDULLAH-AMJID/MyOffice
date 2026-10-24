@@ -749,6 +749,7 @@ class MainWindow(QMainWindow):
             tools.addAction(icon(t.icon), _t(t.title), lambda x=tid: self.run_tool(x))
         tools.addSeparator()
         tools.addAction(icon("link"), _t("Register File Types"), self.register_file_types)
+        tools.addAction(icon("refresh"), _t("Refresh File Type Icons"), self.refresh_icons)
         tools.addAction(icon("share"), _t("Create Desktop Shortcuts"), self.create_shortcuts)
         tools.addAction(icon("install"), _t("Legacy Formats Pack\u2026"), self.show_legacy_pack)
         if sys.platform == "win32":
@@ -1104,6 +1105,22 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             handle_exception(self, _t("Register File Types"), exc)
 
+    def refresh_icons(self):
+        """Tools > Refresh File Type Icons: re-point Explorer at the newest artwork + flush its cache."""
+        from app.services import register
+
+        try:
+            updated, registered = register.refresh_file_type_icons()
+            if not registered:
+                show_info(self, _t("Refresh File Type Icons"),
+                          _t("MyOffice file types are not registered yet. Use Tools \u2192 Register File Types first."))
+                return
+            show_info(self, _t("Refresh File Type Icons"),
+                      _t("Updated {0} file type icon(s) and refreshed the Windows icon cache.\n\n"
+                         "If Explorer still shows the old picture, press F5 in that window.").format(updated))
+        except Exception as exc:
+            handle_exception(self, _t("Refresh File Type Icons"), exc)
+
     def create_shortcuts(self):
         from app.services import shortcuts
 
@@ -1264,8 +1281,16 @@ class MainWindow(QMainWindow):
     def start_services(self):
         try:
             from app.services import register
+            from app.version import BINARY_VERSION
 
-            register.repair_stale_icon_registrations()
+            # A new version may ship new artwork: force the mirror + DefaultIcon rewrite once per version,
+            # otherwise just heal anything that went stale (cheap, no registry writes when nothing changed).
+            force = str(cfg().get("ui.icon_pack", "")) != BINARY_VERSION
+            if force:
+                register.sync_icon_mirror(force=True)
+            register.repair_stale_icon_registrations(force=force)
+            if force:
+                cfg().set("ui.icon_pack", BINARY_VERSION, save=True)
         except Exception as exc:
             log.debug("Startup icon check skipped: %s", exc)
         if not self.safe_mode:

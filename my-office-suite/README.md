@@ -36,6 +36,23 @@ and in the user interface.
 
 ---
 
+## File type icons
+
+Every file MyOffice owns carries the **MyOffice brand mark** (the blue "M" letterhead) *and* its own unmistakable
+identity - colour, glyph and extension label - so a PDF, a DOCX, an XLSX and a PPTX are never confused in Explorer:
+
+| Writer | Spreadsheets | Presentation | PDF | Photos | Code | Vault |
+|---|---|---|---|---|---|---|
+| blue page, text lines, `DOCX` band | green page, grid, `XLSX` band | orange page, chart, `PPTX` band | red page, text + seal, `PDF` band | violet page, photo montage, `IMG` band | teal page, angle brackets, `CODE` band | slate page, padlock, `LOCK` band |
+
+![File type icons](docs/file-type-icons.png)
+
+* Size aware: 16/20/24 px frames are a compact colour tile with a thick white glyph (a text label would be mud at
+  that size), 32-256 px frames use the full page design.
+* The artwork is mirrored into `%APPDATA%\MyOffice\icons` and every `DefaultIcon` points there, so a read-only
+  Program Files install still shows the current icons, and a signed OTA hot-patch can deliver new artwork without
+  a 116 MB reinstall (`Tools -> Refresh File Type Icons` forces an Explorer cache rebuild).
+
 ## What is new in 1.3
 
 | Area | Added |

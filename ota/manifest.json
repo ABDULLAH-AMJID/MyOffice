@@ -1,9 +1,9 @@
 {
   "schema": "myoffice-ota-v2",
-  "version": "1.6.2",
-  "version_code": 10602,
-  "date": "2026-10-23T17:58:26Z",
-  "notes": "v1.6.2 Live Download Progress Bar + 6x Parallel Turbo Speed + Top-Bar Windows Update Button",
+  "version": "1.6.3",
+  "version_code": 10603,
+  "date": "2026-10-24T05:03:16Z",
+  "notes": "v1.6.3 Branded file-type icons: every DOCX/XLSX/PPTX/PDF/IMG file shows the MyOffice M mark plus its own colour, glyph and extension label; per-user icon mirror + Tools > Refresh File Type Icons",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
@@ -17,20 +17,20 @@
     "bundle_sha256": "60d428601f013e207464b0b3e9ef8db39deae1959e54bb6f3338b9d4477b28ca",
     "bundle_size": 52833,
     "bundle_files": 5,
-    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Android.apk",
+    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.2/MyOffice_Android.apk",
     "apk_sha256": "f430e5ec52c033ee14bcde1b1e31758b98b8f8d60bd801c825a75ba97f389b1d",
     "apk_size": 5299904
   },
   "windows": {
-    "version": "1.6.2",
+    "version": "1.6.3",
     "min_binary_version": "1.0.0",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "49bc73d08a66f50559d4b93531cf4b66f4f5785de489e7b275a4304ae012fb00",
-    "patch_size": 696761,
-    "patch_files": 140,
+    "patch_sha256": "61320ef25df3cd4f54bcf9610a751d807cc65a3a436758c583f8e4a84dec6677",
+    "patch_size": 1169278,
+    "patch_files": 156,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
     "installer_sha256": "6bb0742f02fca2307b762cd49fd909bffe19c42b20a8bd93a8a0563a418358c5",
     "installer_size": 122070197
   },
-  "signature": "MEYCIQDmGfj6oUmODg6tQuNN7Gzkzklymg8CHu5AvIsPcM2IEwIhAMQXEvy5Ae/leoj33Uprz1KytZyFqsqENHuBIoLsF9OF"
+  "signature": "MEUCICQi0cfepqTnozHpJyNY0NLhEQKhbKXcgI/Gm7X2+6fkAiEAkFCWLeHdr+iOd/68czidFaLjXt9JQ3KPuir8wqV7weo="
 }

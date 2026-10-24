@@ -5,10 +5,17 @@ ProgIDs, ``DefaultIcon`` pointing directly to crisp multi-resolution ``.ico`` fi
 embedded inside ``MyOffice.exe``), ``OpenWithProgids``, ``myoffice://`` protocol, application capabilities, and
 ``RegisteredApplications`` so the suite shows up cleanly in *Settings -> Default apps* and Windows Explorer.
 
+Every file type carries the MyOffice brand mark **and** its own colour, glyph and extension label, so a PDF, a
+DOCX, an XLSX and a PPTX can never be confused in Explorer.  The artwork lives in ``resources/icons/app`` and is
+mirrored into ``%APPDATA%\\MyOffice\\icons`` (see :func:`sync_icon_mirror`) before registration, so:
+  * Explorer always reads the newest icons, even when the program folder is read-only (Program Files);
+  * a live OTA hot-patch can ship new artwork without a 116 MB installer download.
+
 Linux: freedesktop ``.desktop`` entries plus ``xdg-mime default``.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -16,8 +23,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app.services.paths import executable_command, resource_path
-from app.version import APP_NAME
+from app.services.paths import executable_command, resource_path, user_subdir
+from app.version import APP_NAME, BINARY_VERSION
 
 log = logging.getLogger(__name__)
 _NO_WIN = 0x08000000 if os.name == "nt" else 0
@@ -80,8 +87,62 @@ def _command_line(extra: str = '"%1"') -> str:
     return " ".join(f'"{p}"' for p in parts) + (" " + extra if extra else "")
 
 
+def icons_mirror_dir() -> Path:
+    """Per-user icon folder (``%APPDATA%\\MyOffice\\icons``) that Explorer's ``DefaultIcon`` points at.
+
+    Program Files is read-only for a normal user and PyInstaller's ``_internal`` folder belongs to the
+    installation, so the newest artwork is copied here first.  This also means a signed OTA hot-patch can
+    refresh the file-type icons without reinstalling the 116 MB setup.
+    """
+    return user_subdir("icons")
+
+
+def _file_digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(262144), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sync_icon_mirror(force: bool = False) -> list[Path]:
+    """Copy the bundled ``.ico`` files into the per-user mirror; returns the written files."""
+    src_dir = resource_path("icons", "app")
+    if not src_dir.is_dir():
+        return []
+    try:
+        dst_dir = icons_mirror_dir()
+    except OSError as exc:  # read-only profile - fall back to the bundled files
+        log.debug("Icon mirror unavailable: %s", exc)
+        return []
+    written: list[Path] = []
+    for kind in ICON_INDEX:
+        src = src_dir / f"{kind}.ico"
+        if not src.is_file():
+            continue
+        dst = dst_dir / f"{kind}.ico"
+        try:
+            if not force and dst.is_file() and dst.stat().st_size == src.stat().st_size \
+                    and _file_digest(dst) == _file_digest(src):
+                continue
+            shutil.copyfile(src, dst)
+            written.append(dst)
+        except OSError as exc:
+            log.debug("Could not mirror icon %s: %s", kind, exc)
+    stamp = dst_dir / "icon-pack.txt"
+    if written or force or not stamp.is_file():
+        try:
+            stamp.write_text(f"{BINARY_VERSION}\n", encoding="utf-8")
+        except OSError:
+            pass
+    return written
+
+
 def icon_spec_for(kind: str, exe: str | None = None) -> str:
-    """Prefer standalone multi-size `.ico` files (zero PE-index ambiguity on Windows 11), with multi-icon PE fallback."""
+    """Path Explorer should use: the per-user mirror, else the bundled `.ico`, else the PE icon index."""
+    mirrored = icons_mirror_dir() / f"{kind}.ico"
+    if mirrored.is_file():
+        return str(mirrored)
     ico = resource_path("icons", "app", f"{kind}.ico")
     if ico.is_file():
         return str(ico.resolve())
@@ -94,6 +155,7 @@ def _win_register(exts) -> list[str]:  # pragma: no cover - Windows only
     import winreg
 
     done = []
+    sync_icon_mirror()
     exe = executable_command()[0]
     classes = r"Software\Classes"
     cap = r"Software\MyOffice\Capabilities"
@@ -131,14 +193,19 @@ def _win_register(exts) -> list[str]:  # pragma: no cover - Windows only
     return done
 
 
-def repair_stale_icon_registrations() -> int:
-    """Repair any pre-v1.3 `HKCU\\Software\\Classes\\MyOffice.*\\DefaultIcon` keys pointing to missing/blank icons."""
+def repair_stale_icon_registrations(force: bool = False) -> int:
+    """Re-point every ``MyOffice.*`` ProgID at the current artwork and refresh the Explorer cache.
+
+    Runs at startup (cheap: it only writes when a value really differs) and again after an update, so a
+    user upgrading from any earlier version immediately sees the new, clearly distinguishable file icons.
+    """
     if sys.platform != "win32":
         return 0
     repaired = 0
     try:  # pragma: no cover - Windows only
         import winreg
 
+        sync_icon_mirror(force=force)
         exe = executable_command()[0]
         seen: set[str] = set()
         for progid, _friendly, _mime, kind in ASSOCIATIONS.values():
@@ -146,23 +213,42 @@ def repair_stale_icon_registrations() -> int:
                 continue
             seen.add(progid)
             subkey = rf"Software\Classes\{progid}\DefaultIcon"
+            desired = icon_spec_for(kind, exe)
             try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0,
-                                    winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_READ) as k:
                     cur, _ = winreg.QueryValueEx(k, "")
-                    desired = icon_spec_for(kind, exe)
-                    target_file = cur.split(",")[0].strip().strip('"')
-                    if cur != desired and (not target_file or not os.path.isfile(target_file)
-                                           or target_file.lower().endswith(".exe")):
-                        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, desired)
-                        repaired += 1
+            except FileNotFoundError:
+                continue  # ProgID is not registered (user unticked file associations in Setup)
             except OSError:
                 continue
+            if not force and cur == desired:
+                continue
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, desired)
+                repaired += 1
+            except OSError:
+                continue
+        # The shell keeps its own icon cache: rebuild it + broadcast the association change so the new
+        # artwork appears in open Explorer windows without a log-off, reboot or manual cache purge.
         if repaired:
             _win_notify()
     except Exception as exc:
         log.debug("Stale icon check skipped: %s", exc)
     return repaired
+
+
+def refresh_file_type_icons() -> tuple[int, bool]:
+    """Rewrite every ``DefaultIcon`` with the newest artwork and flush the Explorer icon cache.
+
+    Returns ``(progids_updated, registered)``.  Used by *Tools -> Refresh File Type Icons* and right after
+    an update has been applied, so a user never has to reinstall just to get new file icons.
+    """
+    if sys.platform != "win32":
+        return 0, False
+    registered = any(_win_is_registered(ext) for ext in DEFAULT_EXTS)
+    updated = repair_stale_icon_registrations(force=True) if registered else 0
+    return updated, registered
 
 
 def _win_unregister(exts) -> list[str]:  # pragma: no cover - Windows only
@@ -208,14 +294,25 @@ def _win_unregister(exts) -> list[str]:  # pragma: no cover - Windows only
 def _win_notify():  # pragma: no cover - Windows only
     import ctypes
 
-    SHCNE_ASSOCCHANGED, SHCNF_IDLIST = 0x08000000, 0
-    ctypes.windll.shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None)
+    SHCNE_ASSOCCHANGED = 0x08000000
+    SHCNF_IDLIST, SHCNF_FLUSH, SHCNF_FLUSHNOWAIT = 0x0000, 0x1000, 0x2000
     try:
-        ie4 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "ie4uinit.exe")
-        if os.path.isfile(ie4):
-            subprocess.Popen([ie4, "-show"], creationflags=_NO_WIN)
+        ctypes.windll.shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSHNOWAIT,
+                                            None, None)
     except Exception:
         pass
+    for exe, args in (
+        ("ie4uinit.exe", ["-show"]),      # rebuild the shell icon cache
+        ("ie4uinit.exe", ["-ClearIconCache"]),
+    ):
+        path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", exe)
+        if not os.path.isfile(path):
+            continue
+        try:
+            subprocess.Popen([path, *args], creationflags=_NO_WIN, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 def _win_is_registered(ext: str) -> bool:  # pragma: no cover - Windows only

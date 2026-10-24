@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 APP_NAME = "MyOffice"
-BINARY_VERSION = "1.6.2"
+BINARY_VERSION = "1.6.3"
 APP_ORG = "MyOffice Project"
 APP_DOMAIN = "myoffice.local"
 APP_ID = "MyOffice.Suite"  # Windows AppUserModelID; the installer's shortcuts carry the same ID
