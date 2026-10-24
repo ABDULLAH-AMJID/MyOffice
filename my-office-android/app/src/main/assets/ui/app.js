@@ -60,6 +60,8 @@
       pcSyncTitle: "Pair & Sync with Windows PC",
       pcSyncDesc: "Open MyOffice on your PC (Ctrl+Alt+Y) and scan its QR code or find your PC on Wi-Fi without internet.",
       scanQr: "Scan PC QR",
+      qrNoFound: "No QR code in that picture. Use a sharper, well-lit photo — or scan live with the camera.",
+      qrRead: "QR code read",
       findPc: "Find PC",
       lblPcUrl: "PC Address or Pairing Link",
       lblPin: "6-Digit Pairing PIN",
@@ -140,6 +142,8 @@
       pcSyncTitle: "کمپیوٹر کے ساتھ فوری سنک",
       pcSyncDesc: "اپنے کمپیوٹر پر MyOffice کھولیں (Ctrl+Alt+Y) اور بغیر انٹرنیٹ QR کوڈ اسکین کریں یا وائی فائی پر تلاش کریں۔",
       scanQr: "QR اسکین کریں",
+      qrNoFound: "اس تصویر میں کوئی QR کوڈ نہیں ملا۔ صاف اور روشن تصویر منتخب کریں، یا کیمرے سے لائیو اسکین کریں۔",
+      qrRead: "QR کوڈ پڑھ لیا گیا",
       findPc: "کمپیوٹر تلاش کریں",
       lblPcUrl: "کمپیوٹر ایڈریس یا لنک",
       lblPin: "6 ہندسوں کا پن کوڈ",
@@ -220,6 +224,8 @@
       pcSyncTitle: "Windows PC के साथ पेयर और सिंक",
       pcSyncDesc: "PC पर MyOffice खोलें (Ctrl+Alt+Y) और बिना इंटरनेट QR कोड स्कैन करें या PC खोजें।",
       scanQr: "QR स्कैन करें",
+      qrNoFound: "इस तस्वीर में कोई QR कोड नहीं मिला। साफ़ और रोशनी वाली तस्वीर चुनें, या कैमरे से लाइव स्कैन करें।",
+      qrRead: "QR कोड पढ़ लिया गया",
       findPc: "PC खोजें",
       lblPcUrl: "PC पता या लिंक",
       lblPin: "6-अंकीय पिन",
@@ -1151,8 +1157,10 @@
 
   window.__onNativeQrScanned = async function (raw) {
     const info = JSON.parse(raw);
+    if (info.cancelled) return;                 // user closed the scanner on purpose: stay quiet
     if (!info.ok || !info.text) {
-      toast("No QR code detected — frame closer and retry");
+      const pack = I18N[state.lang] || I18N.en;
+      toast(pack.qrNoFound || "No QR code in that picture.");
       return;
     }
     handleIncomingUriOrQr(info.text);

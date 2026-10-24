@@ -32,7 +32,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.myoffice.app.bridge.AndroidBridge
-import com.myoffice.app.qr.QrCodec
+import com.myoffice.app.qr.QrGallery
+import com.myoffice.app.qr.QrImageDecoder
+import com.myoffice.app.qr.QrScannerActivity
 import com.myoffice.app.update.OtaUpdateManager
 import org.json.JSONObject
 import java.io.File
@@ -50,7 +52,6 @@ class MainActivity : AppCompatActivity() {
     private val pendingDeepEvents = mutableListOf<Pair<String, String>>()
     private var pendingWebFileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraFile: File? = null
-    private var pendingCameraForQr: Boolean = false
     private var pendingApkToInstall: File? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bootWatchdogRunnable = Runnable {
@@ -84,36 +85,40 @@ class MainActivity : AppCompatActivity() {
         cb?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
     }
 
+    /** In-app CameraX scanner: returns the decoded payload (or nothing when the user backs out). */
+    private val qrScannerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val text = result.data?.getStringExtra(QrScannerActivity.EXTRA_RESULT_TEXT)
+        if (result.resultCode == RESULT_OK && !text.isNullOrBlank()) {
+            pushJsEvent("window.__onNativeQrScanned", JSONObject().put("ok", true).put("text", text).toString())
+        } else {
+            pushJsEvent("window.__onNativeQrScanned", JSONObject().put("ok", false).put("cancelled", true).toString())
+        }
+    }
+
+    /** "Pick a QR code from the gallery" - decoded off the UI thread by [QrGallery]. */
     private val qrImagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             decodeQrFromUri(uri)
+        } else {
+            pushJsEvent("window.__onNativeQrScanned", JSONObject().put("ok", false).put("cancelled", true).toString())
         }
     }
 
     private val cameraTakePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val photo = pendingCameraFile
         if (ok && photo != null && photo.isFile) {
-            if (pendingCameraForQr) {
-                val bmp = BitmapFactory.decodeFile(photo.absolutePath)
-                photo.delete()
-                if (bmp != null) {
-                    decodeQrFromBitmap(bmp)
-                    bmp.recycle()
-                }
-            } else {
-                val dest = File(bridge.workspaceDir, "Scan_${System.currentTimeMillis() % 100000}.jpg")
-                photo.copyTo(dest, overwrite = true)
-                photo.delete()
-                pushJsEvent(
-                    "window.__onNativeFileImported",
-                    JSONObject().put("rel", dest.name).put("autoOpen", true).toString()
-                )
-            }
+            val dest = File(bridge.workspaceDir, "Scan_${System.currentTimeMillis() % 100000}.jpg")
+            photo.copyTo(dest, overwrite = true)
+            photo.delete()
+            pushJsEvent(
+                "window.__onNativeFileImported",
+                JSONObject().put("rel", dest.name).put("autoOpen", true).toString()
+            )
         }
     }
 
     private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCameraIntentNow(pendingCameraForQr)
+        if (granted) startDocumentCameraIntent()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -321,32 +326,22 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    /**
+     * Decode a QR code from a picture the user picked. [QrGallery] downsamples the bitmap and
+     * [QrImageDecoder] retries rotation / inversion / centre crops, so screenshots and ordinary photos
+     * work - the previous single-shard ZXing pass usually returned nothing on a phone picture.
+     * A payload is *always* sent back, so the UI can never end up waiting forever.
+     */
     private fun decodeQrFromUri(uri: Uri) {
         Thread {
-            val bmp = runCatching {
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()
-            if (bmp != null) {
-                decodeQrFromBitmap(bmp)
-                bmp.recycle()
+            val text = runCatching { QrGallery.decode(contentResolver, uri) }.getOrNull()
+            val payload = if (text != null) {
+                JSONObject().put("ok", true).put("text", text)
             } else {
-                pushJsEvent("window.__onNativeQrScanned", JSONObject().put("ok", false).toString())
+                JSONObject().put("ok", false).put("fromGallery", true)
             }
+            pushJsEvent("window.__onNativeQrScanned", payload.toString())
         }.start()
-    }
-
-    private fun decodeQrFromBitmap(bmp: Bitmap) {
-        val w = bmp.width
-        val h = bmp.height
-        val pixels = IntArray(w * h)
-        bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-        val text = QrCodec.decodeFromArgbPixels(pixels, w, h)
-        val payload = if (text != null) {
-            JSONObject().put("ok", true).put("text", text)
-        } else {
-            JSONObject().put("ok", false)
-        }
-        pushJsEvent("window.__onNativeQrScanned", payload.toString())
     }
 
     private fun queryDisplayName(uri: Uri): String? {
@@ -365,23 +360,34 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { qrImagePickerLauncher.launch("image/*") }
     }
 
-    fun launchCameraCapture(forQr: Boolean) {
+    /** Every "Scan QR" button in the UI ends up here: open the in-app scanner (never the photo camera). */
+    fun launchQrScanner() {
         runOnUiThread {
-            pendingCameraForQr = forQr
+            runCatching { qrScannerLauncher.launch(Intent(this, QrScannerActivity::class.java)) }
+                .onFailure {
+                    // last resort: let the user pick a picture of the code
+                    qrImagePickerLauncher.launch("image/*")
+                }
+        }
+    }
+
+    /** Document / whiteboard photo -> PDF or OCR flow (unchanged: this one really is a photo). */
+    fun launchCameraCapture() {
+        runOnUiThread {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                startCameraIntentNow(forQr)
+                startDocumentCameraIntent()
             } else {
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
         }
     }
 
-    private fun startCameraIntentNow(forQr: Boolean) {
+    private fun startDocumentCameraIntent() {
         val cacheScans = File(cacheDir, "scans").apply { mkdirs() }
-        val tmp = File(cacheScans, if (forQr) "qr_capture.jpg" else "doc_capture.jpg")
+        val tmp = File(cacheScans, "doc_capture.jpg")
         pendingCameraFile = tmp
         val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", tmp)
-        cameraTakePictureLauncher.launch(uri)
+        runCatching { cameraTakePictureLauncher.launch(uri) }
     }
 
     fun resolveJsPromise(reqId: String, jsonPayload: String) {

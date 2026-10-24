@@ -2,24 +2,24 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.3",
   "version_code": 10603,
-  "date": "2026-10-24T05:14:20Z",
-  "notes": "v1.6.3 Branded file-type icons: every DOCX/XLSX/PPTX/PDF/IMG file shows the MyOffice M mark plus its own colour, glyph and extension label; per-user icon mirror + Tools > Refresh File Type Icons",
+  "date": "2026-10-24T06:33:47Z",
+  "notes": "Android 1.6.4 — every Scan QR button now opens a real in-app camera scanner (CameraX live preview, torch, pinch-zoom, tap-to-focus) and gallery or shared pictures decode reliably (rotation, inverted/dark mode, tiny and low-contrast codes). Windows unchanged at 1.6.3.",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
   "sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
   "size": 122066692,
   "android": {
-    "version": "1.6.2",
-    "version_code": 10602,
-    "min_native_code": 10602,
+    "version": "1.6.4",
+    "version_code": 10604,
+    "min_native_code": 10604,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
-    "bundle_sha256": "60d428601f013e207464b0b3e9ef8db39deae1959e54bb6f3338b9d4477b28ca",
-    "bundle_size": 52833,
+    "bundle_sha256": "fefe04d7202b77579e53ff2ab7b335875c795d35f049cd329411a8841791da28",
+    "bundle_size": 53116,
     "bundle_files": 5,
-    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.2/MyOffice_Android.apk",
-    "apk_sha256": "f430e5ec52c033ee14bcde1b1e31758b98b8f8d60bd801c825a75ba97f389b1d",
-    "apk_size": 5299904
+    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.4/MyOffice_Android.apk",
+    "apk_sha256": "10ce15606bfa79ee4347cf23b72cfcb4e90cc788163826aca4c00b2a020eb84e",
+    "apk_size": 7014361
   },
   "windows": {
     "version": "1.6.3",
@@ -32,5 +32,5 @@
     "installer_sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
     "installer_size": 122066692
   },
-  "signature": "MEYCIQCA+FMp99aYU2jmxi4viKabFtWDygYsjdOgUNBGQymThAIhANQeBDwVNhi9sp+sdxL2BumawmWIBjBqAaH7A675PU2N"
+  "signature": "MEUCIQDhUip0os62LXuyfuOqd8B2WBzwUte31lOgp6Kl0mA44gIgeKGTvdA3JDDfM+kEr/UJYEcuD7q2Sd+6UN+xztFVK5g="
 }

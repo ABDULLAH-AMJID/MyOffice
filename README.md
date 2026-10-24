@@ -53,3 +53,34 @@ DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
 * **`Tools -> Refresh File Type Icons`** re-points all ProgIDs and rebuilds the shell icon cache on demand.
 * A signed OTA hot-patch (`ota/windows-patch.zip`, ~1.1 MB) now ships the artwork too, so existing `v1.6.2` installs
   receive the new icons without downloading the 116 MB setup.
+
+---
+
+## What is new in `v1.6.4` — Android QR scanning that actually scans
+
+**The bug:** every "Scan QR" button on Android opened the *system photo camera* (`ACTION_IMAGE_CAPTURE`), and a
+picture picked from the gallery was pushed through a single full-resolution ZXing pass — so a QR code was rarely
+read, and there was never a live viewfinder.
+
+**The fix — a real scanner screen** (`com.myoffice.app.qr.QrScannerActivity`):
+
+* **Live camera preview** through **CameraX** (`Preview` + `ImageAnalysis`, 1280x720, `KEEP_ONLY_LATEST`, ~12
+  decodes/second) with a dimmed viewfinder window, corner brackets and an animated scan beam that turns green on
+  success.
+* **Decodes the Y plane directly** from the camera frame (no RGB conversion), rotated to the display orientation,
+  with an inverted retry for dark-mode screenshots.
+* **Torch toggle**, **pinch-to-zoom**, **tap-to-focus**, vibration on success, and a "Choose from gallery" button
+  built into the same screen.
+* **Robust still-image decoding** (`QrImageDecoder`): normalise to a 320-1600 px working size, then walk a strategy
+  ladder — upright, inverted, 90/180/270 rotations, centre crops at 0.74/0.52/0.36, 2x upscale for tiny codes —
+  before giving up. Gallery pictures are sampled with `inSampleSize` (long edge ~2048 px) so a 12 MP photo never
+  allocates 48 MB of pixels.
+* Decoded payloads still flow through `window.__onNativeQrScanned` into PC pairing (`myoffice://pair`,
+  `:4188x`, `:8766`) and Live Collaboration (`ws://`, `/f/`, `:8765`) exactly as before; when nothing is found the
+  user gets a clear, localised message (English / اردو / हिन्दी) instead of silence.
+* Android 15 edge-to-edge handled with real `WindowInsetsCompat` (status bar + cut-out + navigation bar).
+* 12 new host-side JVM regression tests cover rotated, inverted, tiny, low-contrast, cropped and camera-frame
+  decoding.
+
+Windows is unchanged in this release (still `v1.6.3`); this is an Android-only fix, so the OTA manifest pins the
+Android descriptor to `1.6.4` / `10604` with `min_native_code 10604`.

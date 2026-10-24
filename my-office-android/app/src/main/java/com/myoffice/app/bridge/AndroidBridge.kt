@@ -202,12 +202,13 @@ class AndroidBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun requestCameraScan() {
-        activity.launchCameraCapture(forQr = false)
+        activity.launchCameraCapture()
     }
 
+    /** Opens the real in-app QR scanner (CameraX preview + continuous decode), not the system camera. */
     @JavascriptInterface
     fun requestScanQrCamera() {
-        activity.launchCameraCapture(forQr = true)
+        activity.launchQrScanner()
     }
 
     @JavascriptInterface

@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MyOffice</string>
+    <string name="qr_title">Scan QR code</string>
+    <string name="qr_hint">Place the code inside the frame - it is read automatically</string>
+    <string name="qr_close">Close scanner</string>
+    <string name="qr_torch">Torch</string>
+    <string name="qr_gallery">Choose from gallery</string>
 </resources>

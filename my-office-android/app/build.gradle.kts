@@ -13,8 +13,8 @@ android {
         applicationId = "com.myoffice.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10602
-        versionName = "1.6.2"
+        versionCode = 10604
+        versionName = "1.6.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -127,8 +127,15 @@ dependencies {
     // Native PDF manipulation engine (Merge, Split, Compress, AES-256 Protect/Unlock, Stamp, Forms, Extract)
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
-    // QR Code generation & scanning decoding (PC Pairing + Live Collaboration QR)
+    // QR Code generation & decoding (PC Pairing + Live Collaboration QR)
     implementation("com.google.zxing:core:3.5.3")
+
+    // Live in-app QR scanner: camera preview + frame analysis (the old "scan" opened the system camera).
+    val camerax = "1.4.0"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
 
     // Wi-Fi Router USB / NAS FTP & FTPS client
     implementation("commons-net:commons-net:3.11.1")
