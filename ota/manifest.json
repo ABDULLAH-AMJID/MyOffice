@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.3",
   "version_code": 10603,
-  "date": "2026-10-24T05:13:20Z",
+  "date": "2026-10-24T05:14:20Z",
   "notes": "v1.6.3 Branded file-type icons: every DOCX/XLSX/PPTX/PDF/IMG file shows the MyOffice M mark plus its own colour, glyph and extension label; per-user icon mirror + Tools > Refresh File Type Icons",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -32,5 +32,5 @@
     "installer_sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
     "installer_size": 122066692
   },
-  "signature": "MEUCIQCdoJ1u79ee4DoHdePD+tmfyYW1eE4NlOzg2PBKMiqc0wIgG5UXxRiVoMupY3JVCe79hCadDpGiQHssbqnO1tr3h1s="
+  "signature": "MEYCIQCA+FMp99aYU2jmxi4viKabFtWDygYsjdOgUNBGQymThAIhANQeBDwVNhi9sp+sdxL2BumawmWIBjBqAaH7A675PU2N"
 }

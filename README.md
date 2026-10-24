@@ -25,3 +25,31 @@ Every release published to this repository is signed with **ECDSA P-256 + SHA-25
 | `ota-system/` | ECDSA P-256 release publisher CLI (`publish_release.py`) & pinned SPKI public key (`ota_public_key.b64`) |
 | `ota/` | Live signed OTA channel (`manifest.json`, `android-ui.zip`, `windows-patch.zip`) |
 | `.github/workflows/release-suite.yml` | Automated OTA signature verifier + Cloud Android APK & Windows Setup EXE release pipeline |
+
+---
+
+## What is new in `v1.6.3` — MyOffice-branded, unmistakable file-type icons (Windows)
+
+Every file type now carries the **MyOffice brand mark** (blue "M" letterhead) *and* its own identity, so a PDF, a
+DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
+
+| Format | Icon | Band label | Glyph |
+| :-- | :-- | :-- | :-- |
+| Writer (`.docx`, `.docm`, `.dotx`, `.doc`, `.odt`, `.rtf`, `.wpt`) | blue page | `DOCX` | text lines |
+| Spreadsheets (`.xlsx`, `.xlsm`, `.xltx`, `.xls`, `.csv`, `.ods`, `.tsv`, `.ett`) | green page | `XLSX` | spreadsheet grid |
+| Presentation (`.pptx`, `.ppsx`, `.potx`, `.ppt`, `.odp`, `.dpt`) | orange page | `PPTX` | bar chart |
+| PDF (`.pdf`) | red page | `PDF` | text block + verified seal |
+| Photos (`.png`, `.jpg`, `.webp`, `.bmp`, `.gif`, `.tif`, `.jfif`) | violet page | `IMG` | photo montage |
+| Code / text | teal page | `CODE` | angle brackets |
+| `.movault` vault | slate page | `LOCK` | padlock |
+
+![MyOffice file type icons](my-office-suite/docs/file-type-icons-explorer.png)
+
+* **10 resolutions per icon** (16, 20, 24, 32, 40, 48, 64, 96, 128, 256 px); the 16/20/24 px frames are a compact
+  colour tile with a thick white glyph, because a 6 px tall text label is unreadable in Explorer's small views.
+* **Icon mirror + cache busting:** artwork is mirrored into `%APPDATA%\MyOffice\icons\<kind>-<version>.ico` and every
+  `DefaultIcon` points there. The version in the file name busts Explorer's path-keyed icon cache, so an update shows
+  the new picture immediately - no reinstall, no log-off, no manual icon-cache purge.
+* **`Tools -> Refresh File Type Icons`** re-points all ProgIDs and rebuilds the shell icon cache on demand.
+* A signed OTA hot-patch (`ota/windows-patch.zip`, ~1.1 MB) now ships the artwork too, so existing `v1.6.2` installs
+  receive the new icons without downloading the 116 MB setup.
