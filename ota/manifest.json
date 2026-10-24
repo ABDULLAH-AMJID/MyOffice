@@ -2,13 +2,13 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.3",
   "version_code": 10603,
-  "date": "2026-10-24T05:06:42Z",
+  "date": "2026-10-24T05:13:20Z",
   "notes": "v1.6.3 Branded file-type icons: every DOCX/XLSX/PPTX/PDF/IMG file shows the MyOffice M mark plus its own colour, glyph and extension label; per-user icon mirror + Tools > Refresh File Type Icons",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-  "sha256": "6bb0742f02fca2307b762cd49fd909bffe19c42b20a8bd93a8a0563a418358c5",
-  "size": 122070197,
+  "sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
+  "size": 122066692,
   "android": {
     "version": "1.6.2",
     "version_code": 10602,
@@ -29,8 +29,8 @@
     "patch_size": 1170095,
     "patch_files": 156,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-    "installer_sha256": "6bb0742f02fca2307b762cd49fd909bffe19c42b20a8bd93a8a0563a418358c5",
-    "installer_size": 122070197
+    "installer_sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
+    "installer_size": 122066692
   },
-  "signature": "MEUCIQDtm2wb4kS4iFLbTl69UjvEFSwQXzGkgEEBtDszzF1fyAIgTebC1uN8TK/fSaFSgnpFtw1QsTUmoMLo5+3x4VbTtlQ="
+  "signature": "MEUCIQCdoJ1u79ee4DoHdePD+tmfyYW1eE4NlOzg2PBKMiqc0wIgG5UXxRiVoMupY3JVCe79hCadDpGiQHssbqnO1tr3h1s="
 }
