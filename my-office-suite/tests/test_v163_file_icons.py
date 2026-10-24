@@ -138,23 +138,31 @@ def test_icon_mirror_is_written_and_used_by_default_icon(tmp_path, monkeypatch):
     written = register.sync_icon_mirror(force=True)
     mirror = register.icons_mirror_dir()
     assert mirror == tmp_path / "icons"
-    assert {p.stem for p in written} == set(KINDS)
+    assert len(written) == len(KINDS)
     for kind in FILE_KINDS:
-        copy = mirror / f"{kind}.ico"
+        copy = mirror / register.icon_mirror_name(kind)
         assert copy.is_file() and copy.stat().st_size > 8_000
         assert copy.read_bytes() == resource_path("icons", "app", f"{kind}.ico").read_bytes()
         spec = register.icon_spec_for(kind, r"C:\Program Files\MyOffice\MyOffice.exe")
-        assert spec.endswith(f"{kind}.ico")
+        assert spec.endswith(".ico")
         assert Path(spec) == copy, "Explorer must read the writable, always-current mirror copy"
+        # the file name carries the icon-pack version, which is what busts Explorer's path-keyed cache
+        assert register.icon_pack_stamp() in copy.name
 
     # second run is a no-op (no needless copying on every start)
     assert register.sync_icon_mirror() == []
 
     # a changed icon on disk is re-mirrored
-    stale = mirror / "pdf.ico"
+    stale = mirror / register.icon_mirror_name("pdf")
     stale.write_bytes(b"not an icon")
-    assert [p.name for p in register.sync_icon_mirror()] == ["pdf.ico"]
+    assert [p.name for p in register.sync_icon_mirror()] == [register.icon_mirror_name("pdf")]
     assert (mirror / "icon-pack.txt").is_file()
+
+    # artwork of an earlier icon pack is removed, so the profile never piles up icons
+    old = mirror / "pdf-1.0.0.ico"
+    old.write_bytes(b"old")
+    register.sync_icon_mirror()
+    assert not old.exists()
 
 
 def test_registration_maps_every_extension_to_the_right_icon_kind():
@@ -188,7 +196,40 @@ def test_ota_hotpatch_icons_override_the_bundled_ones(tmp_path, monkeypatch):
     # the hot-patched artwork flows into the Explorer mirror
     monkeypatch.setenv("MYOFFICE_HOME", str(tmp_path / "profile"))
     register.sync_icon_mirror(force=True)
-    assert (tmp_path / "profile" / "icons" / "pdf.ico").read_bytes() == (icons / "pdf.ico").read_bytes()
+    mirrored = tmp_path / "profile" / "icons" / register.icon_mirror_name("pdf")
+    assert mirrored.read_bytes() == (icons / "pdf.ico").read_bytes()
+
+
+def test_hotpatch_apply_delivers_new_icons_to_explorer(tmp_path, monkeypatch):
+    """End-to-end: a signed OTA `.zip` is applied, then the new icons reach the Explorer mirror."""
+    from app.services import updater
+
+    ota_root = tmp_path / "ota"
+    patch_src = tmp_path / "patch"
+    icons = patch_src / "resources" / "icons" / "app"
+    icons.mkdir(parents=True)
+    for kind in FILE_KINDS:
+        shutil.copyfile(resource_path("icons", "app", f"{kind}.ico"), icons / f"{kind}.ico")
+    (patch_src / "app").mkdir()
+    (patch_src / "app" / "shell").mkdir()
+    (patch_src / "app" / "shell" / "main_window.py").write_text("# patched\n", encoding="utf-8")
+    zip_path = tmp_path / "windows-patch.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for root in (patch_src,):
+            for path in root.rglob("*"):
+                if path.is_file():
+                    zf.write(path, path.relative_to(root).as_posix())
+
+    monkeypatch.setenv("MYOFFICE_OTA_DIR", str(ota_root))
+    monkeypatch.setenv("MYOFFICE_HOME", str(tmp_path / "profile"))
+    updater.apply_hotpatch_zip(zip_path, version="1.6.3")
+
+    assert (ota_root / "current" / "resources" / "icons" / "app" / "pdf.ico").is_file()
+    assert resource_path("icons", "app", "pdf.ico").parent == ota_root / "current" / "resources" / "icons" / "app"
+    register.sync_icon_mirror(force=True)
+    mirrored = tmp_path / "profile" / "icons" / register.icon_mirror_name("pdf")
+    assert mirrored.is_file()
+    assert mirrored.read_bytes() == (ota_root / "current" / "resources" / "icons" / "app" / "pdf.ico").read_bytes()
 
 
 def test_windows_hotpatch_bundle_ships_the_icon_family(tmp_path):

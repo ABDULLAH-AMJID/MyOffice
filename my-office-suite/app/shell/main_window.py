@@ -1281,16 +1281,19 @@ class MainWindow(QMainWindow):
     def start_services(self):
         try:
             from app.services import register
-            from app.version import BINARY_VERSION
 
-            # A new version may ship new artwork: force the mirror + DefaultIcon rewrite once per version,
-            # otherwise just heal anything that went stale (cheap, no registry writes when nothing changed).
-            force = str(cfg().get("ui.icon_pack", "")) != BINARY_VERSION
+            # A new version (or a signed OTA hot-patch that ships new artwork) must show up immediately:
+            # force the mirror + DefaultIcon rewrite once per icon-pack identity, otherwise just heal
+            # anything that went stale (cheap: no registry writes when nothing changed).
+            pack = register.icon_pack_stamp()
+            force = str(cfg().get("ui.icon_pack", "")) != pack
+            written = register.sync_icon_mirror(force=force)
+            updated = register.repair_stale_icon_registrations(force=force)
+            if written and not updated:
+                # new bytes under the same file names - the registry is right but Explorer still caches
+                register.notify_shell_icons()
             if force:
-                register.sync_icon_mirror(force=True)
-            register.repair_stale_icon_registrations(force=force)
-            if force:
-                cfg().set("ui.icon_pack", BINARY_VERSION, save=True)
+                cfg().set("ui.icon_pack", pack, save=True)
         except Exception as exc:
             log.debug("Startup icon check skipped: %s", exc)
         if not self.safe_mode:

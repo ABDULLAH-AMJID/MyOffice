@@ -45,7 +45,9 @@ identity - colour, glyph and extension label - so a PDF, a DOCX, an XLSX and a P
 |---|---|---|---|---|---|---|
 | blue page, text lines, `DOCX` band | green page, grid, `XLSX` band | orange page, chart, `PPTX` band | red page, text + seal, `PDF` band | violet page, photo montage, `IMG` band | teal page, angle brackets, `CODE` band | slate page, padlock, `LOCK` band |
 
-![File type icons](docs/file-type-icons.png)
+![MyOffice file type icons in Explorer](docs/file-type-icons-explorer.png)
+
+![The icon family](docs/file-type-icons-family.png)
 
 * Size aware: 16/20/24 px frames are a compact colour tile with a thick white glyph (a text label would be mud at
   that size), 32-256 px frames use the full page design.

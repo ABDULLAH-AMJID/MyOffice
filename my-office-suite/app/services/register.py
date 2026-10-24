@@ -105,6 +105,22 @@ def _file_digest(path: Path) -> str:
     return h.hexdigest()
 
 
+def _stamp_slug() -> str:
+    """Version string safe for a file name (``1.6.3`` stays ``1.6.3``)."""
+    raw = "".join(ch for ch in icon_pack_stamp() if ch.isalnum() or ch in ".-_")
+    return raw or BINARY_VERSION
+
+
+def icon_mirror_name(kind: str) -> str:
+    """File name of the mirrored icon.
+
+    The name carries the icon-pack version on purpose: Explorer keys its icon cache on the file path, so
+    keeping the name stable across updates would leave users staring at the *previous* artwork until the
+    cache expired.  A new name per pack guarantees the new picture is loaded immediately.
+    """
+    return f"{kind}-{_stamp_slug()}.ico"
+
+
 def sync_icon_mirror(force: bool = False) -> list[Path]:
     """Copy the bundled ``.ico`` files into the per-user mirror; returns the written files."""
     src_dir = resource_path("icons", "app")
@@ -116,11 +132,12 @@ def sync_icon_mirror(force: bool = False) -> list[Path]:
         log.debug("Icon mirror unavailable: %s", exc)
         return []
     written: list[Path] = []
+    current = {icon_mirror_name(kind) for kind in ICON_INDEX}
     for kind in ICON_INDEX:
         src = src_dir / f"{kind}.ico"
         if not src.is_file():
             continue
-        dst = dst_dir / f"{kind}.ico"
+        dst = dst_dir / icon_mirror_name(kind)
         try:
             if not force and dst.is_file() and dst.stat().st_size == src.stat().st_size \
                     and _file_digest(dst) == _file_digest(src):
@@ -129,10 +146,17 @@ def sync_icon_mirror(force: bool = False) -> list[Path]:
             written.append(dst)
         except OSError as exc:
             log.debug("Could not mirror icon %s: %s", kind, exc)
+    # drop the artwork of earlier versions so the profile folder never grows with every update
+    try:
+        for stale in dst_dir.glob("*.ico"):
+            if stale.name not in current:
+                stale.unlink(missing_ok=True)
+    except OSError:
+        pass
     stamp = dst_dir / "icon-pack.txt"
     if written or force or not stamp.is_file():
         try:
-            stamp.write_text(f"{BINARY_VERSION}\n", encoding="utf-8")
+            stamp.write_text(f"{icon_pack_stamp()}\n", encoding="utf-8")
         except OSError:
             pass
     return written
@@ -140,9 +164,15 @@ def sync_icon_mirror(force: bool = False) -> list[Path]:
 
 def icon_spec_for(kind: str, exe: str | None = None) -> str:
     """Path Explorer should use: the per-user mirror, else the bundled `.ico`, else the PE icon index."""
-    mirrored = icons_mirror_dir() / f"{kind}.ico"
-    if mirrored.is_file():
-        return str(mirrored)
+    try:
+        mirrored = icons_mirror_dir() / icon_mirror_name(kind)
+        if mirrored.is_file():
+            return str(mirrored)
+        legacy = icons_mirror_dir() / f"{kind}.ico"
+        if legacy.is_file():
+            return str(legacy)
+    except OSError:
+        pass
     ico = resource_path("icons", "app", f"{kind}.ico")
     if ico.is_file():
         return str(ico.resolve())
@@ -193,6 +223,33 @@ def _win_register(exts) -> list[str]:  # pragma: no cover - Windows only
     return done
 
 
+def notify_shell_icons() -> None:
+    """Ask Explorer to drop its icon cache (used after new artwork landed under the same file names)."""
+    if sys.platform == "win32":
+        _win_notify()
+
+
+def icon_pack_stamp() -> str:
+    """Identity of the icon pack currently in effect: binary version plus any active OTA hot-patch."""
+    try:
+        from app.version import effective_version
+
+        return effective_version()
+    except Exception:
+        return BINARY_VERSION
+
+
+def _progid_in_hklm(progid: str) -> bool:  # pragma: no cover - Windows only
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"Software\Classes\{progid}") as k:
+            winreg.QueryValueEx(k, "")
+        return True
+    except OSError:
+        return False
+
+
 def repair_stale_icon_registrations(force: bool = False) -> int:
     """Re-point every ``MyOffice.*`` ProgID at the current artwork and refresh the Explorer cache.
 
@@ -217,14 +274,21 @@ def repair_stale_icon_registrations(force: bool = False) -> int:
             try:
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_READ) as k:
                     cur, _ = winreg.QueryValueEx(k, "")
+                exists = True
             except FileNotFoundError:
-                continue  # ProgID is not registered (user unticked file associations in Setup)
+                cur, exists = "", False
             except OSError:
                 continue
-            if not force and cur == desired:
+            if not exists:
+                # A per-machine install (MyOffice Setup runs elevated) registers the ProgIDs under
+                # HKLM, which a normal user cannot rewrite.  A per-user DefaultIcon override with the
+                # same ProgID wins over HKLM and needs no admin rights - exactly what we do here.
+                if not _progid_in_hklm(progid):
+                    continue  # not registered at all (user unticked file associations in Setup)
+            elif not force and cur == desired:
                 continue
             try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as k:
+                with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as k:
                     winreg.SetValueEx(k, "", 0, winreg.REG_SZ, desired)
                 repaired += 1
             except OSError:

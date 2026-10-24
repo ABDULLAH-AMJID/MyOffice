@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.3",
   "version_code": 10603,
-  "date": "2026-10-24T05:03:16Z",
+  "date": "2026-10-24T05:06:42Z",
   "notes": "v1.6.3 Branded file-type icons: every DOCX/XLSX/PPTX/PDF/IMG file shows the MyOffice M mark plus its own colour, glyph and extension label; per-user icon mirror + Tools > Refresh File Type Icons",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -25,12 +25,12 @@
     "version": "1.6.3",
     "min_binary_version": "1.0.0",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "61320ef25df3cd4f54bcf9610a751d807cc65a3a436758c583f8e4a84dec6677",
-    "patch_size": 1169278,
+    "patch_sha256": "50d6c2058d7bcbf756381fcb804f02519ddef0a1d3f26d2686817574a1bc1620",
+    "patch_size": 1170095,
     "patch_files": 156,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
     "installer_sha256": "6bb0742f02fca2307b762cd49fd909bffe19c42b20a8bd93a8a0563a418358c5",
     "installer_size": 122070197
   },
-  "signature": "MEUCICQi0cfepqTnozHpJyNY0NLhEQKhbKXcgI/Gm7X2+6fkAiEAkFCWLeHdr+iOd/68czidFaLjXt9JQ3KPuir8wqV7weo="
+  "signature": "MEUCIQDtm2wb4kS4iFLbTl69UjvEFSwQXzGkgEEBtDszzF1fyAIgTebC1uN8TK/fSaFSgnpFtw1QsTUmoMLo5+3x4VbTtlQ="
 }
