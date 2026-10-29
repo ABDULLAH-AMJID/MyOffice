@@ -127,5 +127,7 @@ Three separate defects lined up:
 delivery, destroyed-dialog safety, the bounded parallel probe and the `StorageTarget` contract — full suite
 **312 passed, 1 skipped**.
 
-Android is unchanged in this release (still `v1.6.4` with the new QR scanner). Windows installs already on
-`v1.6.3` receive this as a **signed Tier-1 hot-patch** (`ota/windows-patch.zip`, ~1.2 MB) — no 122 MB download.
+Android is unchanged in this release (still `v1.6.4` with the new QR scanner). Windows installs already on `v1.6.3`
+or `v1.6.4` receive this as a **signed Tier-1 hot-patch** (`ota/windows-patch.zip`, 1,175,129 B) — applied in under a
+second, no 122 MB download. New installs get `MyOffice_Setup.exe` **v1.6.5** (`122,120,937` B, sha
+`05b54fa7…f62`), which contains the fix directly.
