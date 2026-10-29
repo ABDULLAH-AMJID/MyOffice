@@ -2,13 +2,13 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.5",
   "version_code": 10605,
-  "date": "2026-10-29T14:14:47Z",
+  "date": "2026-10-29T14:25:13Z",
   "notes": "Windows 1.6.5 — fixed the 'Scan Wi-Fi Router & USB' crash: the scan no longer raises TypeError/AttributeError, background callbacks now run on the GUI thread (no more 'Not Responding' / blank white window), a destroyed dialog is safe, and discovery is a real bounded parallel probe of USB drives + router SMB/FTP shares. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-  "sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
-  "size": 122066692,
+  "sha256": "05b54fa78e053d19d4fa915b9783cbeaa8aa668f04b4623ce7e5e48496825f62",
+  "size": 122120937,
   "android": {
     "version": "1.6.4",
     "version_code": 10604,
@@ -29,8 +29,8 @@
     "patch_size": 1175129,
     "patch_files": 156,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-    "installer_sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
-    "installer_size": 122066692
+    "installer_sha256": "05b54fa78e053d19d4fa915b9783cbeaa8aa668f04b4623ce7e5e48496825f62",
+    "installer_size": 122120937
   },
-  "signature": "MEQCIH2rLl5SbxJ9vaK1uZ7FwUY+RKuk3XkLn4kUGfprWmWCAiALsNYRP9srgESuNBVE4ahZTSyobJMjs29+VCzC0gTVyg=="
+  "signature": "MEQCIFeOzLgePhSTfKnhCjyeQEDPrxnePMPOAzsIwNQb8qH+AiARlj4qtC40Vvs+B0leL/mnoiaCru6DD3zDjPXtHxV/cw=="
 }
