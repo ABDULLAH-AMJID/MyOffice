@@ -249,12 +249,16 @@ class CloudSyncDialog(QDialog):
             edit.setText(d)
 
     def _scan_targets(self):
+        if getattr(self, "_scanning", False):
+            return
+        self._scanning = True
         self.log.append("Scanning USB ports, local cloud folders, and Wi-Fi router shares\u2026")
 
         def job():
             return discover_storage_targets(scan_network=True)
 
         def done(targets):
+            self._scanning = False
             if not targets:
                 QMessageBox.information(
                     self, "Router & USB Scan",
@@ -276,7 +280,14 @@ class CloudSyncDialog(QDialog):
                     self.target.setText(t.location)
                 self.log.append(f"Selected: {t.location}")
 
-        run_in_thread(self, job, done, lambda m: QMessageBox.warning(self, "Scan failed", m))
+        def failed(message: str):
+            self._scanning = False
+            head = (message or "").strip().splitlines()[0] if (message or "").strip() else "Unknown error"
+            self.log.append("Scan failed: " + head)
+            QMessageBox.warning(self, "Scan failed",
+                                "The USB / router scan could not finish.\n\n" + head)
+
+        run_in_thread(self, job, done, failed)
 
     def _google_oauth(self):
         from app.services.gmail_storage import authorize_google_oauth_pkce

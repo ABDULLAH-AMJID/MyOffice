@@ -16,3 +16,11 @@ __pycache__/
 .pytest_cache/
 .android/
 .gradle/
+
+# Local tool caches (pip / Qt / gradle) must never enter a release commit
+.cache/
+.local/
+.config/
+.cargo/
+.npm/
+.tmp/

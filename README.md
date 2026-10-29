@@ -84,3 +84,48 @@ read, and there was never a live viewfinder.
 
 Windows is unchanged in this release (still `v1.6.3`); this is an Android-only fix, so the OTA manifest pins the
 Android descriptor to `1.6.4` / `10604` with `min_native_code 10604`.
+
+---
+
+## What is new in `v1.6.5` — "Scan Wi-Fi Router & USB" no longer crashes the app
+
+**The bug (Windows):** pressing **Scan Wi-Fi Router & USB** in *Backup & Vault* produced a
+**"Scan Error (Not Responding)"** window and then a **blank white dialog**; the whole app had to be killed.
+
+Three separate defects lined up:
+
+1. **Wrong call signature.** `BackupDialog` called `discover_storage_targets(scan_network=True)`, but the
+   service took no arguments — so every scan raised `TypeError` inside the worker thread.
+2. **Wrong attribute names.** Both scan dialogs render `target.location` / `target.detail` / `target.backend`,
+   while `StorageTarget` only had `label` / `path_or_url` / `kind` — so even a *successful* scan would have died
+   with `AttributeError` the moment anything was found.
+3. **Widgets touched from a worker thread.** `run_in_thread()` connected a `QThread` worker's signals straight to
+   plain Python lambdas. PySide only queues a signal into the receiving thread for **QObject slots**; a lambda is
+   called in the thread that emits it — here the background thread. Every `QMessageBox`, label update and tree
+   rebuild therefore ran off the GUI thread, which is what blanked the window and froze the event loop.
+
+**The fixes**
+
+* `app/services/worker.py` rewritten: outcomes are handed to a `_Relay` **QObject living in the GUI thread**, so
+  `on_done` / `on_error` always run on the GUI thread; a raising handler is logged instead of killing the app;
+  the `QThread` is no longer parented to a dialog (closing a dialog mid-job can no longer abort with
+  *"QThread: Destroyed while thread is still running"*); a destroyed dialog is detected via `shiboken6.isValid`
+  and its callbacks are skipped.
+* `app/services/net_storage.py`: `StorageTarget` now exposes `location` / `backend` / `detail` **and** keeps
+  `path_or_url` / `kind` as aliases; `discover_storage_targets(scan_network=…)` matches the real call.
+* Discovery is a genuine probe now, not a canned list: removable/mapped/local drives with free space, then a
+  **parallel TCP probe** of the router gateway (SMB 445/139 and FTP 21, plus the common `192.168.x.1`/`10.0.0.1`
+  candidates) that only lists shares which actually answered, with the USB folder name (`USB_Storage`, `usb1_1`,
+  `sda1`…) when FTP lets us read it. Worst case is ~1.2 s; nothing can hang.
+* Gateway detection no longer depends on the English words "Default Gateway" in `ipconfig` — it uses
+  PowerShell `Get-NetRoute`, then `route print 0.0.0.0`, then a language-independent IPv4 scan, so localised
+  Windows installs detect their router too.
+* Both dialogs now show a busy state (**"Scanning…"**, button disabled, repeated clicks ignored) and report the
+  outcome in the status line: *"No USB drive or router share answered…"* or the real error text.
+
+**Tests:** 14 new regression tests (`tests/test_v165_vault_scan.py`) cover the exact click path, GUI-thread
+delivery, destroyed-dialog safety, the bounded parallel probe and the `StorageTarget` contract — full suite
+**312 passed, 1 skipped**.
+
+Android is unchanged in this release (still `v1.6.4` with the new QR scanner). Windows installs already on
+`v1.6.3` receive this as a **signed Tier-1 hot-patch** (`ota/windows-patch.zip`, ~1.2 MB) — no 122 MB download.

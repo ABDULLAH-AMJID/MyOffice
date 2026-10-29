@@ -1,9 +1,9 @@
 {
   "schema": "myoffice-ota-v2",
-  "version": "1.6.3",
-  "version_code": 10603,
-  "date": "2026-10-24T06:33:47Z",
-  "notes": "Android 1.6.4 — every Scan QR button now opens a real in-app camera scanner (CameraX live preview, torch, pinch-zoom, tap-to-focus) and gallery or shared pictures decode reliably (rotation, inverted/dark mode, tiny and low-contrast codes). Windows unchanged at 1.6.3.",
+  "version": "1.6.5",
+  "version_code": 10605,
+  "date": "2026-10-29T14:14:47Z",
+  "notes": "Windows 1.6.5 — fixed the 'Scan Wi-Fi Router & USB' crash: the scan no longer raises TypeError/AttributeError, background callbacks now run on the GUI thread (no more 'Not Responding' / blank white window), a destroyed dialog is safe, and discovery is a real bounded parallel probe of USB drives + router SMB/FTP shares. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
@@ -22,15 +22,15 @@
     "apk_size": 7014361
   },
   "windows": {
-    "version": "1.6.3",
+    "version": "1.6.5",
     "min_binary_version": "1.0.0",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "50d6c2058d7bcbf756381fcb804f02519ddef0a1d3f26d2686817574a1bc1620",
-    "patch_size": 1170095,
+    "patch_sha256": "82955dc9d52b61408749617065150efb8faac8d1f20529056cf309bc648ff1bc",
+    "patch_size": 1175129,
     "patch_files": 156,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
     "installer_sha256": "e1ed948d49fbed41f5b6695a62571b2f30acc825aab0d2d61d47ce586d07c034",
     "installer_size": 122066692
   },
-  "signature": "MEUCIQDhUip0os62LXuyfuOqd8B2WBzwUte31lOgp6Kl0mA44gIgeKGTvdA3JDDfM+kEr/UJYEcuD7q2Sd+6UN+xztFVK5g="
+  "signature": "MEQCIH2rLl5SbxJ9vaK1uZ7FwUY+RKuk3XkLn4kUGfprWmWCAiALsNYRP9srgESuNBVE4ahZTSyobJMjs29+VCzC0gTVyg=="
 }

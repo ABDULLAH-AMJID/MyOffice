@@ -1,5 +1,0 @@
-2026-10-23 12:38:11,813 INFO websockets.server: server listening on 127.0.0.1:36197
-2026-10-23 12:38:11,827 INFO websockets.server: HTTP response sent (200 OK)
-2026-10-23 12:38:11,828 INFO websockets.server: connection closed
-2026-10-23 12:38:11,836 INFO websockets.server: server closing
-2026-10-23 12:38:11,836 INFO websockets.server: server closed

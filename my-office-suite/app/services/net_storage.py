@@ -29,13 +29,39 @@ _NO_WIN = 0x08000000 if os.name == "nt" else 0
 
 @dataclass
 class StorageTarget:
+    """One place encrypted backups can live: a USB drive, a router share, or an FTP/SMB endpoint.
+
+    The dialogs (`backup_dialog.py`, `cloud_sync_dialog.py`) render these as
+    ``f"{label} -> {location} ({detail})"`` and read ``backend`` to pick the SMB tab or the FTP tab, so the
+    attribute names below are part of the UI contract. `path_or_url`/`kind` are kept as aliases because they
+    were the original public names.
+    """
+
     label: str
-    path_or_url: str
-    kind: str  # "usb" | "smb" | "ftp"
+    location: str
+    backend: str = "usb"        # "usb" | "smb" | "ftp"
+    detail: str = ""
+
+    # ---- back-compat aliases (older call sites / third-party scripts) ----
+    @property
+    def path_or_url(self) -> str:
+        return self.location
+
+    @property
+    def kind(self) -> str:
+        return self.backend
+
+    def __str__(self) -> str:  # used directly in the "no target found" dialogs
+        return f"{self.label} -> {self.location} ({self.detail})" if self.detail else f"{self.label} -> {self.location}"
 
 
 def _default_gateway_ip() -> str:
-    """Detect the active Wi-Fi router gateway IP (e.g. `192.168.1.1` or `192.168.0.1`) so we can suggest router USB URLs."""
+    """Detect the active Wi-Fi router gateway IP (e.g. `192.168.1.1` or `192.168.0.1`).
+
+    Windows ships a *localised* `ipconfig`, so matching the English words "Default Gateway" finds nothing on a
+    Chinese/Urdu/German system. PowerShell's `Get-NetRoute` is language-neutral, `route print 0.0.0.0` is the
+    fallback, and only then do we fall back to a plain-IPv4 scan of `ipconfig`.
+    """
     try:
         if sys.platform.startswith("linux") and os.path.exists("/proc/net/route"):
             for line in Path("/proc/net/route").read_text(encoding="utf-8", errors="ignore").splitlines()[1:]:
@@ -46,54 +72,292 @@ def _default_gateway_ip() -> str:
                     if not ip.startswith(("0.", "127.", "169.254.")):
                         return ip
         elif sys.platform == "win32":  # pragma: no cover - Windows runtime
-            out = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=5, creationflags=_NO_WIN)
-            for line in out.stdout.splitlines():
-                if "Default Gateway" in line and ":" in line:
-                    cand = line.split(":", 1)[1].strip()
-                    if cand and "." in cand:
-                        return cand
+            ip = _windows_gateway_powershell() or _windows_gateway_route_print() or _windows_gateway_ipconfig()
+            if ip:
+                return ip
     except Exception:
         pass
     return "192.168.1.1"
 
 
-def discover_storage_targets() -> list[StorageTarget]:
-    """Discover plugged-in USB drives, network drives, and Wi-Fi Router USB share templates."""
-    targets: list[StorageTarget] = []
-    if sys.platform == "win32":  # pragma: no cover - Windows runtime
-        import ctypes
+_IPV4_RE = None
 
-        DRIVE_REMOVABLE, DRIVE_REMOTE = 2, 4
+
+def _ipv4_candidates(text: str) -> list[str]:
+    global _IPV4_RE
+    if _IPV4_RE is None:
+        import re
+
+        _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    out: list[str] = []
+    for raw in _IPV4_RE.findall(text or ""):
+        octets = [int(x) for x in raw.split(".")]
+        if any(o > 255 for o in octets):
+            continue
+        if raw.startswith(("0.", "127.", "169.254.", "255.")):
+            continue
+        if raw not in out:
+            out.append(raw)
+    return out
+
+
+def _windows_gateway_powershell() -> str:  # pragma: no cover - Windows runtime
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | "
+             "Select-Object -First 1 -ExpandProperty NextHop)"],
+            capture_output=True, text=True, timeout=8, creationflags=_NO_WIN, errors="replace",
+        )
+        cands = _ipv4_candidates(out.stdout)
+        return cands[0] if cands else ""
+    except Exception:
+        return ""
+
+
+def _windows_gateway_route_print() -> str:  # pragma: no cover - Windows runtime
+    try:
+        out = subprocess.run(["route", "print", "0.0.0.0"], capture_output=True, text=True,
+                             timeout=8, creationflags=_NO_WIN, errors="replace")
+        for line in out.stdout.splitlines():
+            cols = line.split()
+            if len(cols) >= 3 and cols[0] == "0.0.0.0":
+                cands = _ipv4_candidates(cols[2])
+                if cands:
+                    return cands[0]
+    except Exception:
+        pass
+    return ""
+
+
+def _windows_gateway_ipconfig() -> str:  # pragma: no cover - Windows runtime
+    """Last resort: the gateway is the first private IPv4 that is not one of this machine's own addresses."""
+    try:
+        out = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=8,
+                             creationflags=_NO_WIN, errors="replace").stdout
+    except Exception:
+        return ""
+    lines = out.splitlines()
+    hints = ("gateway", "standardgateway", "gateway standard", "tor", "gateway:", "brama", "ağ geçidi",
+             "ゲートウェイ", "网关", "العبّارة", "العبارة")
+    for line in lines:
+        low = line.lower()
+        if any(h in low for h in hints):
+            cands = _ipv4_candidates(line)
+            if cands:
+                return cands[0]
+    # localised to the point that no keyword matches: prefer .1 / .254 style private addresses
+    cands = [ip for ip in _ipv4_candidates(out) if ip.startswith(("192.168.", "10.", "172."))]
+    for ip in cands:
+        if ip.endswith((".1", ".254")):
+            return ip
+    return cands[0] if cands else ""
+
+
+def _removable_drives_windows() -> list[StorageTarget]:
+    """Pluggable USB sticks / SD cards, and drives that are already mapped over the network."""
+    out: list[StorageTarget] = []
+    import ctypes
+
+    DRIVE_REMOVABLE, DRIVE_REMOTE, DRIVE_FIXED = 2, 4, 3
+    try:
         mask = ctypes.windll.kernel32.GetLogicalDrives()
-        for idx in range(26):
-            if not (mask & (1 << idx)):
-                continue
-            root = f"{chr(65 + idx)}:\\"
+    except Exception:  # pragma: no cover - non-Windows
+        return out
+    for idx in range(26):
+        if not (mask & (1 << idx)):
+            continue
+        root = f"{chr(65 + idx)}:\\"
+        try:
             dtype = ctypes.windll.kernel32.GetDriveTypeW(root)
-            if dtype == DRIVE_REMOVABLE:
-                targets.append(StorageTarget(f"USB Drive ({root}) — Direct Laptop USB Port", os.path.join(root, "MyOffice_Vault"), "usb"))
-            elif dtype == DRIVE_REMOTE:
-                targets.append(StorageTarget(f"Network / Router Drive ({root})", os.path.join(root, "MyOffice_Vault"), "smb"))
-    else:
-        for base in ("/media", "/mnt", "/run/media"):
-            p = Path(base)
-            if p.is_dir():
-                for child in sorted(p.iterdir()):
-                    if child.is_dir():
-                        targets.append(StorageTarget(f"Removable / Mounted Drive ({child})", str(child / "MyOffice_Vault"), "usb"))
+        except Exception:
+            continue
+        if dtype == DRIVE_REMOVABLE:
+            free, total = _free_space(root)
+            out.append(StorageTarget(
+                f"USB Drive ({root[:-1]})",
+                os.path.join(root, "MyOffice_Vault"),
+                "usb",
+                f"removable, {free} free of {total}",
+            ))
+        elif dtype == DRIVE_REMOTE:
+            out.append(StorageTarget(
+                f"Network / Router Drive ({root[:-1]})",
+                os.path.join(root, "MyOffice_Vault"),
+                "smb",
+                "mapped network drive",
+            ))
+        elif dtype == DRIVE_FIXED and os.path.isdir(os.path.join(root, "MyOffice_Vault")):
+            out.append(StorageTarget(
+                f"Local Drive ({root[:-1]})",
+                os.path.join(root, "MyOffice_Vault"),
+                "usb",
+                "existing MyOffice_Vault folder",
+            ))
+    return out
 
-    gw = _default_gateway_ip()
-    targets.append(StorageTarget(
-        f"Wi-Fi Router USB via SMB (\\\\{gw}\\USB_Storage\\MyOffice_Vault)",
-        f"\\\\{gw}\\USB_Storage\\MyOffice_Vault",
-        "smb",
-    ))
-    targets.append(StorageTarget(
-        f"Wi-Fi Router USB via FTP (ftp://{gw}:21/MyOffice_Vault)",
-        f"ftp://{gw}:21/MyOffice_Vault",
-        "ftp",
-    ))
+
+def _free_space(path: str) -> tuple[str, str]:
+    try:
+        usage = __import__("shutil").disk_usage(path)
+        gb = 1024 ** 3
+        return f"{usage.free / gb:.1f} GB", f"{usage.total / gb:.1f} GB"
+    except Exception:
+        return "?", "?"
+
+
+def _mounted_drives_posix() -> list[StorageTarget]:
+    out: list[StorageTarget] = []
+    for base in ("/media", "/mnt", "/run/media"):
+        p = Path(base)
+        if not p.is_dir():
+            continue
+        try:
+            children = sorted(p.iterdir())
+        except Exception:
+            continue
+        for child in children:
+            if not child.is_dir():
+                continue
+            free, total = _free_space(str(child))
+            out.append(StorageTarget(
+                f"Removable / Mounted Drive ({child})",
+                str(child / "MyOffice_Vault"),
+                "usb",
+                f"{free} free of {total}",
+            ))
+    return out
+
+
+def _port_open(host: str, port: int, timeout: float) -> bool:
+    """Non-blocking-ish TCP probe; a closed/absent router port answers instantly, a silent one times out."""
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _smb_open(host: str) -> bool:
+    return _port_open(host, 445, 0.35) or _port_open(host, 139, 0.35)
+
+
+def _ftp_open(host: str, port: int = 21, timeout: float = 0.6) -> bool:
+    return _port_open(host, port, timeout)
+
+
+def _gateway_candidates() -> list[str]:
+    """The default gateway first, then the few addresses home routers actually use."""
+    primary = _default_gateway_ip()
+    guesses = ["192.168.1.1", "192.168.0.1", "192.168.100.1", "10.0.0.1", "192.168.2.1"]
+    ordered = [primary] + [g for g in guesses if g != primary]
+    out: list[str] = []
+    for ip in ordered:
+        if ip and ip not in out and not ip.startswith(("0.", "127.", "169.254.")):
+            out.append(ip)
+    return out
+
+
+def discover_storage_targets(
+    scan_network: bool = True,
+    include_local: bool = True,
+    timeout: float = 0.6,
+) -> list[StorageTarget]:
+    """Find every storage target that is actually reachable right now.
+
+    `scan_network=False` returns local drives plus *unverified* router suggestions instantly (used for the
+    "what could I use?" list); `scan_network=True` additionally opens a TCP socket to the router's SMB/FTP
+    ports and only reports the router shares that really answered, each labelled with what answered.
+
+    The whole probe is bounded by `timeout` per address (6 addresses max), so the UI spinner always ends in
+    a couple of seconds even when the router answers nothing — it can never hang the caller.
+    """
+    targets: list[StorageTarget] = []
+    if include_local:
+        if sys.platform == "win32":  # pragma: no cover - Windows runtime
+            targets.extend(_removable_drives_windows())
+        else:
+            targets.extend(_mounted_drives_posix())
+
+    gateways = _gateway_candidates()
+    if not scan_network:
+        gw = gateways[0]
+        targets.append(StorageTarget(f"Wi-Fi Router USB via SMB", f"\\\\{gw}\\USB_Storage\\MyOffice_Vault", "smb", "suggested"))
+        targets.append(StorageTarget(f"Wi-Fi Router USB via FTP", f"ftp://{gw}:21/MyOffice_Vault", "ftp", "suggested"))
+        return targets
+
+    gateways = gateways[:5]
+    radius = min(max(timeout, 0.25), 3.0)
+
+    # Probe every candidate address in parallel: the worst case is one timeout (~0.6 s) instead of one
+    # timeout per address, so the dialog spinner never looks frozen on a network where nothing answers.
+    import concurrent.futures as futures
+
+    with futures.ThreadPoolExecutor(max_workers=min(8, len(gateways) * 2)) as pool:
+        smb_jobs = {gw: pool.submit(_smb_open, gw) for gw in gateways}
+        ftp_jobs = {gw: pool.submit(_probe_ftp, gw, radius) for gw in gateways}
+        smb_results = {gw: job.result() for gw, job in smb_jobs.items()}
+        ftp_results = {gw: job.result() for gw, job in ftp_jobs.items()}
+
+    for gw in gateways:
+        if smb_results.get(gw):
+            targets.append(StorageTarget(
+                "Wi-Fi Router USB via SMB",
+                f"\\\\{gw}\\USB_Storage\\MyOffice_Vault",
+                "smb",
+                f"SMB port open on {gw} — sign in with the router username/password",
+            ))
+        ok, detail = ftp_results.get(gw, (False, ""))
+        if ok:
+            targets.append(StorageTarget(
+                "Wi-Fi Router USB via FTP",
+                f"ftp://{gw}:21/MyOffice_Vault",
+                "ftp",
+                detail,
+            ))
     return targets
+
+
+def _probe_ftp(host: str, timeout: float) -> tuple[bool, str]:
+    """True when an FTP server answered on `host:21`, plus a human-readable detail line."""
+    if not _ftp_open(host, 21, timeout):
+        return False, ""
+    try:
+        ftp = ftplib.FTP(timeout=timeout)
+        ftp.connect(host, 21, timeout=timeout)
+        ftp.login()
+        hint = _guess_share_folder(_normalise_ftp_names(ftp))
+        try:
+            ftp.quit()
+        except Exception:
+            ftp.close()
+        if hint:
+            return True, f"FTP server on {host}:21 — USB folder '{hint}' found"
+        return True, f"FTP server answered on {host}:21"
+    except Exception as exc:  # login required / listing blocked: still a real candidate
+        return True, f"FTP server answered on {host}:21 ({type(exc).__name__}) — enter router credentials"
+
+
+def _normalise_ftp_names(ftp: ftplib.FTP) -> list[str]:
+    try:
+        return [os.path.basename(n.rstrip("/")) for n in ftp.nlst()]
+    except Exception:
+        return []
+
+
+def _guess_share_folder(names: list[str]) -> str:
+    """Routers expose their USB stick under vendor-specific names (USB_Storage, usb1_1, sda1, ...)."""
+    preferred = ("MyOffice_Vault", "MyOfficeVault")
+    for p in preferred:
+        if p in names:
+            return p
+    for n in names:
+        low = n.lower()
+        if low.startswith(("usb", "sda", "sdb", "share", "disk", "volume", "udisk")):
+            return n
+    return ""
 
 
 def connect_smb_share(unc_path: str, username: str = "", password: str = "") -> tuple[bool, str]:

@@ -28,7 +28,7 @@
 ;                       /MYOFFICELANG=ur_PK       en_US | ur_PK | hi_IN
 ; =============================================================================================
 #ifndef MyAppVersion
-  #define MyAppVersion "1.6.3"
+  #define MyAppVersion "1.6.5"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\dist\MyOffice"

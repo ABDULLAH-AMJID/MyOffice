@@ -144,6 +144,7 @@ class BackupDialog(QDialog):
         )
         b_vscan = QPushButton("Scan Wi-Fi Router & USB")
         b_vscan.clicked.connect(self._scan_vault_targets)
+        self.v_scan = b_vscan
         b_vbrowse = QPushButton("Browse\u2026")
         b_vbrowse.clicked.connect(self._browse_vault)
         hl = QHBoxLayout()
@@ -216,18 +217,33 @@ class BackupDialog(QDialog):
             self._refresh_vault()
 
     def _scan_vault_targets(self):
+        if getattr(self, "_scanning", False):
+            return
+        self._scanning = True
         self.status_lbl.setText("Scanning USB drives and Wi-Fi router SMB/FTP storage shares\u2026")
+        self.v_scan.setEnabled(False)
+        self.v_scan.setText("Scanning\u2026")
+
+        def restore_button():
+            self._scanning = False
+            self.v_scan.setEnabled(True)
+            self.v_scan.setText("Scan Wi-Fi Router & USB")
 
         def done(targets):
+            restore_button()
+            targets = list(targets or [])
             if not targets:
-                self.status_lbl.setText("No automatic USB/Router target found — browse a drive or paste \\\\router\\share or ftp://router:21.")
+                self.status_lbl.setText(
+                    "No USB drive or router share answered. Plug the USB stick in (or enable the router's "
+                    "USB/SMB/FTP share), then scan again — or paste the path manually."
+                )
                 QMessageBox.information(
                     self, "Router & USB Scan",
-                    "No open USB drive or router share responded automatically.\n\n"
+                    "No USB drive or Wi-Fi router share answered the scan.\n\n"
                     "If your USB drive is plugged into your Wi-Fi router:\n"
                     "1. Open your router admin page (usually http://192.168.1.1)\n"
                     "2. Enable USB Storage Sharing (SMB or FTP Server)\n"
-                    "3. Click Scan again or paste e.g. ftp://192.168.1.1:21/MyOfficeVault",
+                    "3. Click Scan again, or paste e.g. ftp://192.168.1.1:21/MyOfficeVault",
                 )
                 return
             labels = [f"{t.label}  \u2192  {t.location}  ({t.detail})" for t in targets]
@@ -236,10 +252,22 @@ class BackupDialog(QDialog):
             if ok and choice:
                 t = targets[labels.index(choice)]
                 self.v_loc.setText(t.location)
+                self.status_lbl.setText(f"Selected {t.location}")
                 self._refresh_vault()
+            else:
+                self.status_lbl.setText("Scan finished — nothing selected.")
 
-        run_in_thread(self, lambda: discover_storage_targets(scan_network=True), done,
-                      lambda m: QMessageBox.warning(self, "Scan Error", m))
+        def failed(message: str):
+            restore_button()
+            head = (message or "").strip().splitlines()[0] if (message or "").strip() else "Unknown error"
+            self.status_lbl.setText("Scan failed: " + head)
+            QMessageBox.warning(
+                self, "Scan Error",
+                "The router / USB scan could not finish.\n\n" + head +
+                "\n\nYou can still browse for a drive or paste the share path manually.",
+            )
+
+        run_in_thread(self, discover_storage_targets, done, failed)
 
     def _refresh_vault(self):
         d = self._save_vault_cfg()
