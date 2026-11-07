@@ -298,7 +298,10 @@ class AppAPI:
         return WriterAPI(self._main.new_writer())
 
     def open(self, path: str):
-        return self._main.open_path(path)
+        """Open a file in MyOffice.  Outside the script's own folder this is permission-gated."""
+        if self._gate is not None:
+            self._gate.check(path)      # raises MacroError when the user declines
+        return self._main.open_path(str(path))
 
     def message(self, text, title: str = "Macro"):
         from app.shell.dialogs import show_info

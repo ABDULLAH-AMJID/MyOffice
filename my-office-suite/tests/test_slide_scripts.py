@@ -358,6 +358,30 @@ def test_picture_inside_document_folder_never_asks(slide_doc, tmp_path, make_png
     assert slide_doc.pres.slides[0].shapes[-1].kind == "image"
 
 
+def test_app_open_is_permission_gated(slide_doc, tmp_path, monkeypatch):
+    from app.macros.api import AppAPI
+    from app.macros.errors import MacroError
+    from app.slide.script.permissions import FileGate
+
+    other = tmp_path / "other" / "deck2.pptx"
+    other.parent.mkdir()
+    other.write_bytes(b"not really a deck")
+
+    gate = FileGate(None, ask=lambda path, purpose: False)
+    api = AppAPI(None, gate=gate, doc=slide_doc)
+    with pytest.raises(MacroError):
+        api.open(str(other))
+
+    asked = []
+    gate2 = FileGate(None, ask=lambda path, purpose: asked.append(path) or True)
+    api2 = AppAPI(None, gate=gate2, doc=slide_doc)
+    try:
+        api2.open(str(other))            # allowed → reaches MainWindow.open_path(None main) and fails there
+    except AttributeError:
+        pass
+    assert asked == [str(other)]
+
+
 def test_no_ask_means_reads_are_refused(slide_doc, make_png):
     from app.macros.errors import MacroError
     from app.slide.script.permissions import FileGate
@@ -398,6 +422,31 @@ def test_consent_follows_file_content(tmp_path):
     side.write_text('{"format":"myoffice-script","version":1,"scripts":[{"name":"x","code":""}]}',
                     encoding="utf-8")
     assert store_mod.needs_consent(side) is True        # content changed → ask again
+
+
+def test_own_scripts_never_ask_permission(slide_doc, tmp_path):
+    """A script the user wrote here runs after saving without a trust prompt, and the
+    file it produces is remembered as approved for later sessions."""
+    from app.slide.script import store as store_mod
+    from app.slide.script.dialog import ScriptDialog
+
+    deck = tmp_path / "Mine.pptx"
+    slide_doc.path = deck
+    dialog = ScriptDialog(None, slide_doc)
+    dialog._store().add("mine", 'app.presentation.add_slide(title="ok")\n')
+    dialog._reload_deck()
+    dialog.list.setCurrentRow(0)
+    dialog.b_run.click()                       # first run: no prompt (nothing saved yet)
+    assert "✔ finished" in dialog.output.toPlainText()
+
+    dialog.save()                              # writes the sidecar
+    side = Path(str(deck) + ".moscript")
+    assert side.exists()
+    assert store_mod.needs_consent(side) is False          # remembered as approved
+    assert dialog._store().self_authored is True
+
+    dialog.b_run.click()                       # runs again with no prompt
+    assert dialog.output.toPlainText().count("✔ finished") == 2
 
 
 def test_trusted_folder_skips_consent(tmp_path, monkeypatch):

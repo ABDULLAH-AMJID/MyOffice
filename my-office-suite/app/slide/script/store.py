@@ -100,6 +100,8 @@ class ScriptStore:
         self.doc_hash: str = ""
         self.error: str | None = None      # last load/save problem, shown in the dialog
         self.dirty: bool = False
+        # True once the user writes a script here: their own work never needs a trust prompt.
+        self.self_authored: bool = False
 
     # -- list operations --------------------------------------------------
     def __len__(self):
@@ -130,6 +132,7 @@ class ScriptStore:
         s = Script(self.unique_name(name), code, description)
         self.scripts.append(s)
         self.dirty = True
+        self.self_authored = True
         return s
 
     def normalise(self, script: Script) -> Script:
@@ -152,6 +155,7 @@ class ScriptStore:
         s.name = self.unique_name(str(new).strip()) if str(new).strip() != old else old
         s.touch()
         self.dirty = True
+        self.self_authored = True
         return True
 
     # -- persistence ------------------------------------------------------
@@ -173,6 +177,8 @@ class ScriptStore:
         tmp.replace(path)
         self.path = path
         self.dirty = False
+        if self.self_authored:
+            approve(path)          # our own file: a later session must not re-ask
         return path
 
     def save_for_document(self, doc_path) -> Path | None:

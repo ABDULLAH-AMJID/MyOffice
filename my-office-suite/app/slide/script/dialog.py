@@ -317,6 +317,7 @@ class ScriptDialog(QDialog):
             script.code = code
             script.touch()
         self._store().dirty = True
+        self._store().self_authored = True
         self.doc.set_modified(True)
         self.changed = True
         if self.doc.path is not None:
@@ -477,8 +478,9 @@ class ScriptDialog(QDialog):
 
     def _consent(self) -> bool:
         """Ask once per file content before running scripts from a file we do not trust."""
-        path = self._store().path
-        if path is None or not store_mod.needs_consent(path):
+        store = self._store()
+        path = store.path
+        if path is None or store.self_authored or not store_mod.needs_consent(path):
             return True
         names = "\n".join("   • " + s.name for s in self._store().scripts[:8]) or "   • (script being written)"
         box = QMessageBox(self)
