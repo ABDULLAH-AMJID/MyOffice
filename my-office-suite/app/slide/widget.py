@@ -27,6 +27,7 @@ from app.slide.model import (ANIM_EFFECTS, LAYOUTS, SIZE_4_3, SIZE_16_9, THEMES,
                              Run, Shape, Slide, Theme, Transition, clone_shape, emu, make_slide, px, shape_from_dict,
                              shape_to_dict)
 from app.slide.pptx_io import PresentationError, load_pptx, new_presentation, save_pptx
+from app.slide.script.store import ScriptStore
 
 log = logging.getLogger(__name__)
 SHAPES_MIME = "application/x-myoffice-shapes"
@@ -166,6 +167,10 @@ class SlideDocument(DocumentWidget):
         self.undo = QUndoStack(self)
         self.undo.cleanChanged.connect(self._clean_changed)
         self._stable = self.snapshot()
+        self._macro_depth = 0            # >0 while a script runs: commits are collected into one
+        self._script_synced = True       # False while the canvas is stale after script edits
+        self._pending_selection = None   # (slide index, shape id) selected by a script
+        self.script_store = ScriptStore()
 
         self.thumbs = QListWidget()
         self.thumbs.setViewMode(QListWidget.ListMode)
@@ -276,6 +281,10 @@ class SlideDocument(DocumentWidget):
         self.rebuild_all()
         super().set_modified(False)
         self.titleChanged.emit()
+        self.script_store = ScriptStore.for_document(self.path)
+        if self.script_store.error:
+            logging.getLogger(__name__).warning(self.script_store.error)
+            self.statusChanged.emit(self.script_store.error)
 
     def save_to(self, path: str) -> None:
         self.canvas.commit_text_edits()
@@ -284,6 +293,7 @@ class SlideDocument(DocumentWidget):
         if ext in (".pptx", ".dpt", ".potx"):
             save_pptx(path, self.pres)
             self.undo.setClean()
+            self._save_script_sidecar(path)
         elif ext == ".odp":
             import tempfile
 
@@ -293,6 +303,7 @@ class SlideDocument(DocumentWidget):
             tmp = os.path.join(d, Path(path).stem + ".pptx")
             save_pptx(tmp, self.pres)
             os.replace(convert(tmp, "odp", d), path)
+            self._save_script_sidecar(path)
         elif ext == ".pdf":
             self.export_pdf_to(path)
         else:
@@ -354,12 +365,71 @@ class SlideDocument(DocumentWidget):
         self.rebuild_all()
 
     def commit(self, text: str):
-        self._sync_all()
+        if self._macro_depth > 0:
+            # A script is running: its method calls must not flood the undo stack.
+            # app.slide.script.runner pushes exactly one entry when the run ends.
+            return
+        if self._script_synced:
+            self._sync_all()
+        # else: the canvas still shows the pre-script deck; copying it back would undo
+        # whatever the script just changed.  rebuild_all() refreshes it first.
         after = self.snapshot()
         self.undo.push(SnapshotCommand(self, self._stable, after, text))
         self._stable = after
         self._thumb_timer.start()
         self._refresh_anim_list()
+
+    # ================================================================== script runs
+    def begin_script_run(self):
+        """Start a script transaction; returns the snapshot to roll back to."""
+        if self._macro_depth == 0:
+            self.canvas.commit_text_edits()
+            self._sync_all()          # flush any half-typed canvas edit into the model first
+            self._stable = self.snapshot()
+            self._script_synced = False
+        self._macro_depth += 1
+        return self._stable
+
+    def finish_script_run(self):
+        """The canvas has been rebuilt from the model again: syncing is safe."""
+        self._script_synced = True
+
+    def end_script_run(self):
+        self._macro_depth = max(0, self._macro_depth - 1)
+
+    def select_shape_after_run(self, slide_index: int, shape_id: str) -> None:
+        """Ask the editor to select a shape once the run has refreshed the canvas."""
+        self._pending_selection = (int(slide_index), str(shape_id))
+
+    def apply_pending_selection(self):
+        sel = self._pending_selection
+        self._pending_selection = None
+        if not sel:
+            return
+        index, shape_id = sel
+        if not 0 <= index < len(self.pres.slides):
+            return
+        self.current = index
+        self.thumbs.blockSignals(True)
+        self.thumbs.setCurrentRow(index)
+        self.thumbs.blockSignals(False)
+        shape = next((s for s in self.pres.slides[index].shapes if s.id == shape_id), None)
+        if shape is not None:
+            self.canvas.show_slide(self.pres.slides[index])
+            item = self.canvas.item_for(shape)
+            if item is not None:
+                item.setSelected(True)
+
+    def _save_script_sidecar(self, path: str) -> None:
+        """Write ``<name>.moscript`` next to the deck (removing it when no scripts are left)."""
+        try:
+            self.script_store.save_for_document(path)
+        except Exception as exc:      # a sidecar problem must never fail the document save
+            logging.getLogger(__name__).warning("Scripts sidecar not written: %s", exc)
+            self.statusChanged.emit(_t("Scripts could not be saved: {0}").format(exc))
+
+    def script_count(self) -> int:
+        return len(self.script_store.scripts)
 
     def _sync_all(self):
         for it in self.canvas.items_:
@@ -422,6 +492,8 @@ class SlideDocument(DocumentWidget):
         m.addSeparator()
         m.addAction(icon("up"), _t("Move Up"), lambda: self.move_slide(-1))
         m.addAction(icon("down"), _t("Move Down"), lambda: self.move_slide(1))
+        m.addSeparator()
+        m.addAction(icon("macro"), _t("Scripts for this presentation\u2026"), self.scripts)
         m.exec(self.thumbs.mapToGlobal(pos))
 
     def _notes_changed(self):
@@ -1062,6 +1134,24 @@ class SlideDocument(DocumentWidget):
         self.slideshow(self.current)
 
     # ================================================================== show / export
+    # ================================================================== scripts
+    def scripts(self):
+        """Open the presentation script editor (Alt+F8 — same as the spreadsheet)."""
+        from app.slide.script.dialog import ScriptDialog
+
+        dlg = ScriptDialog(self.window(), self)
+        dlg.exec()
+        if dlg.changed:
+            self.rebuild_all()
+            self.set_modified(True)
+
+    def run_script_file(self, path) -> str:
+        """Run a script file against this deck without opening the dialog (CLI/tests)."""
+        from app.slide.script.runner import run_script
+
+        code = Path(path).read_text(encoding="utf-8")
+        return run_script(code, self.window(), name=Path(path).stem, doc=self)
+
     def slideshow(self, start: int = 0):
         from app.slide.show import SlideShow
 
@@ -1241,6 +1331,7 @@ class SlideDocument(DocumentWidget):
         self.a_export_pdf = A(_t("Export PDF"), "export_pdf", self.export_pdf)
         self.a_export_img = A(_t("Export Images"), "image_out", self.export_images)
         self.a_save_as = A(_t("Save As"), "save_as", self.save_as)
+        self.a_scripts = A(_t("Scripts"), "macro", self.scripts, "Alt+F8")
 
     def _build_ribbon(self) -> Ribbon:
         rb = Ribbon(self)
@@ -1401,6 +1492,8 @@ class SlideDocument(DocumentWidget):
         g.large(self.a_export_pdf)
         g.large(self.a_export_img)
         g.large(self.a_save_as)
+        g = tl.group(_t("Automation"))
+        g.large(self.a_scripts)
         aip = rb.page(_t("AI"))
         g = aip.group(_t("Create"))
         g.large(self.a_ai_slides)

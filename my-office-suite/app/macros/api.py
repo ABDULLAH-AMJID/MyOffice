@@ -13,23 +13,12 @@ Example macro::
 from __future__ import annotations
 
 import datetime
-import io
 import math
 import re
-import sys
-import time
-import traceback
-from contextlib import redirect_stdout
 
+from app.macros.engine import execute_python
+from app.macros.errors import MacroError, MacroStopped, MacroTimeout  # noqa: F401 - re-exported for callers
 from app.services.i18n import _t
-
-
-class MacroError(Exception):
-    pass
-
-
-class MacroTimeout(MacroError):
-    pass
 
 
 def _rc(ref: str):
@@ -201,12 +190,80 @@ class WriterAPI:
 
 
 class AppAPI:
-    def __init__(self, main):
+    def __init__(self, main, gate=None, doc=None):
         self._main = main
+        self._gate = gate          # file-read permission gate (presentation scripts)
+        self._doc = doc            # the document this run belongs to, when pinned
 
     @property
     def active(self):
         return self._main.current_document() if self._main is not None else None
+
+    # -- presentations ----------------------------------------------------
+    @property
+    def presentation(self):
+        """The presentation this script runs against — ``app.presentation``."""
+        from app.slide.script.api import PresentationAPI, presentation_for
+
+        if self._doc is not None and getattr(self._doc, "kind", None) == "slide":
+            return PresentationAPI(self._doc, self._gate)
+        return presentation_for(self._main, self._gate)
+
+    #: ``app.slide`` is the same deck; named to match ``app.sheet`` / ``app.writer``.
+    slide = presentation
+
+    def new_presentation(self):
+        from app.slide.script.api import PresentationAPI
+
+        if self._main is None:
+            raise MacroError(_t("No main window."))
+        return PresentationAPI(self._main.new_slide(), self._gate)
+
+    # -- units & small conveniences ---------------------------------------
+    @staticmethod
+    def emu(pixels: float) -> int:
+        """Pixels → EMU (English Metric Units)."""
+        from app.slide.model import emu as _emu
+
+        return _emu(pixels)
+
+    @staticmethod
+    def px(emu_value: float) -> float:
+        """EMU → pixels."""
+        from app.slide.model import px as _px
+
+        return _px(emu_value)
+
+    @staticmethod
+    def log(text):
+        """Write a line to the script output pane (same as print())."""
+        print(text)
+
+    def confirm(self, text, title: str = "Script") -> bool:
+        from app.shell.dialogs import confirm as _confirm
+
+        return bool(_confirm(self._main, title, str(text)))
+
+    @staticmethod
+    def sleep(milliseconds: float):
+        """Pause between steps, keeping MyOffice responsive (max 5 s)."""
+        import time as _time
+
+        seconds = max(0.0, min(5.0, float(milliseconds) / 1000.0))
+        end = _time.monotonic() + seconds
+        while True:
+            left = end - _time.monotonic()
+            if left <= 0:
+                return
+            _time.sleep(min(0.02, left))
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+            except Exception:
+                _time.sleep(min(0.05, left))
 
     @property
     def sheet(self) -> SheetAPI:
@@ -241,7 +298,10 @@ class AppAPI:
         return WriterAPI(self._main.new_writer())
 
     def open(self, path: str):
-        return self._main.open_path(path)
+        """Open a file in MyOffice.  Outside the script's own folder this is permission-gated."""
+        if self._gate is not None:
+            self._gate.check(path)      # raises MacroError when the user declines
+        return self._main.open_path(str(path))
 
     def message(self, text, title: str = "Macro"):
         from app.shell.dialogs import show_info
@@ -258,11 +318,20 @@ class AppAPI:
         self._main.statusBar().showMessage(str(text), 8000)
 
 
-SAFE_BUILTINS = {k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
-                 for k in ("abs", "all", "any", "bool", "dict", "enumerate", "filter", "float", "format", "int", "isinstance",
-                           "len", "list", "map", "max", "min", "print", "range", "repr", "reversed", "round", "set",
-                           "sorted", "str", "sum", "tuple", "zip", "Exception", "ValueError", "KeyError", "TypeError",
-                           "IndexError", "ZeroDivisionError", "True", "False", "None")
+_SAFE_NAMES = (
+    # values / containers / iteration
+    "abs", "all", "any", "bool", "dict", "enumerate", "filter", "float", "format", "frozenset", "int", "isinstance",
+    "len", "list", "map", "max", "min", "print", "range", "repr", "reversed", "round", "set", "slice", "sorted",
+    "str", "sum", "tuple", "zip", "iter", "next", "bytes", "bytearray", "complex", "divmod", "pow",
+    # introspection people legitimately use in scripts
+    "type", "getattr", "setattr", "hasattr", "callable", "id", "hash", "ord", "chr", "hex", "oct", "bin",
+    # exceptions a script may raise or catch
+    "Exception", "ValueError", "KeyError", "TypeError", "IndexError", "ZeroDivisionError", "RuntimeError",
+    "AttributeError", "StopIteration", "NotImplementedError", "True", "False", "None",
+)
+
+SAFE_BUILTINS = {k: (__builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k))
+                 for k in _SAFE_NAMES
                  if (k in __builtins__ if isinstance(__builtins__, dict) else hasattr(__builtins__, k))}
 
 
@@ -280,36 +349,19 @@ SAFE_BUILTINS["__import__"] = _safe_import
 
 
 def run_macro(code: str, main, timeout: float = 30.0, name: str = "macro") -> str:
-    """Execute macro ``code``; returns captured print() output.  Spreadsheet edits form one undo step."""
+    """Execute macro ``code``; returns captured print() output.  Spreadsheet edits form one undo step.
+
+    The interpreter itself lives in :mod:`app.macros.engine` so that the sheet,
+    writer and presentation script runners share exactly one implementation.
+    """
     app = AppAPI(main)
     ns = {"__builtins__": SAFE_BUILTINS, "app": app, "math": math, "datetime": datetime, "re": re}
-    out = io.StringIO()
-    deadline = time.monotonic() + timeout
-
-    def tracer(frame, event, arg):
-        if time.monotonic() > deadline:
-            raise MacroTimeout(_t("The macro ran longer than {0} seconds and was stopped.").format(int(timeout)))
-        return tracer
 
     sheet_doc = main.current_of_kind("sheet") if main is not None else None
     if sheet_doc is not None:
         sheet_doc.undo.beginMacro(_t("Macro: {0}").format(name))
-    old_trace = sys.gettrace()
     try:
-        compiled = compile(code, f"<{name}>", "exec")
-        sys.settrace(tracer)
-        with redirect_stdout(out):
-            exec(compiled, ns)
-    except MacroError:
-        raise
-    except SyntaxError as exc:
-        raise MacroError(f"Syntax error in line {exc.lineno}: {exc.msg}") from exc
-    except Exception as exc:
-        tb = traceback.extract_tb(exc.__traceback__)
-        line = next((f.lineno for f in reversed(tb) if f.filename == f"<{name}>"), "?")
-        raise MacroError(f"Line {line}: {exc.__class__.__name__}: {exc}") from exc
+        return execute_python(code, ns, timeout=timeout, name=name)
     finally:
-        sys.settrace(old_trace)
         if sheet_doc is not None:
             sheet_doc.undo.endMacro()
-    return out.getvalue()

@@ -65,6 +65,9 @@ DEFAULTS: dict[str, Any] = {
     "ui": {"font_family": "", "font_size": 0, "window_geometry": "", "show_home_on_start": True},
     "ocr": {"tesseract_cmd": "", "languages": "urd+eng"},
     "macros": {"trusted_dirs": []},
+    # Presentation scripts ("MyOffice Script"): off-switch, run budget, trusted folders and the
+    # SHA-256 of script files the user has approved.  See docs/SCRIPTING_DESIGN.md §6.
+    "scripts": {"enabled": True, "timeout": 30, "trusted_dirs": [], "approved": [], "autosave_with_document": True},
     # "auto" = offer the 'Pin to taskbar' tip once (if MyOffice Setup asked for it); "done" / "dismissed"
     "taskbar": {"pin_prompt": "auto"},
 }
