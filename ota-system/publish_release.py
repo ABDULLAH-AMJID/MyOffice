@@ -151,9 +151,14 @@ def package_windows_hotpatch_bundle(out_zip: Path) -> tuple[str, int, int]:
     # 116 MB installer download.
     res_dir = WINDOWS_SUITE_DIR / "resources"
     for p in res_dir.rglob("*"):
-        if p.is_file() and (p.suffix.lower() in {".qss", ".json"}
-                            or (p.parent.name == "app" and p.parent.parent.name == "icons"
-                                and p.suffix.lower() in {".ico", ".png"})):
+        if not p.is_file():
+            continue
+        # Code resources are read through paths.resource_path() and must travel with a hot patch,
+        # otherwise a Tier-1 update ships the feature without its shipped examples.
+        is_code_sample = p.suffix.lower() == ".py" and p.parent.name in {"slide_scripts", "macros"}
+        if (p.suffix.lower() in {".qss", ".json"} or is_code_sample
+                or (p.parent.name == "app" and p.parent.parent.name == "icons"
+                    and p.suffix.lower() in {".ico", ".png"})):
             rel = p.relative_to(WINDOWS_SUITE_DIR).as_posix()
             entries.append((p, rel))
     digest, size = build_deterministic_zip(entries, out_zip)
