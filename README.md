@@ -87,6 +87,21 @@ Android descriptor to `1.6.4` / `10604` with `min_native_code 10604`.
 
 ---
 
+## What is new in `v1.6.6` — Presentation Scripts ("MyOffice Script") for PowerPoint decks (Windows)
+
+PowerPoint-style macro automation, rebuilt for MyOffice and **without unlocking the door VBA opened**. Open a deck, press **Alt+F8** (or *Tools ▸ Automation ▸ Scripts*), write a short Python script, press **Run**.
+
+- **The object model you expect:** `app.presentation` → `.slides` → `.shapes` → `.paragraphs` / `.runs`, plus `theme`. `add_slide(layout, title, body)`, `shapes.add_textbox / add_shape / add_picture / add_table / add_chart`, `shape.text`, `fill`, `line`, `rotation`, `animate(...)`, `bring_to_front()`, `set_transition(...)`, `apply_theme(...)` — EMU geometry with `app.emu(pixels)` for sanity, and values below 1000 read as pixels.
+- **One run = one undo step, and a failed run changes nothing.** Every run is bracketed by a model snapshot: success pushes a single `Macro: <name>` undo entry, any exception restores the deck byte-identically and reports `Line 3: ValueError: …`.
+- **Stop that works, and a time budget.** The interpreter pumps the Qt event loop every 50 ms while it runs, so **Stop** stays clickable during a long script; the 30 s budget aborts a runaway loop and rolls back.
+- **Scripts live beside the deck, never inside it:** `<deck>.pptx.moscript` (readable JSON) is written when you save. `Export package…` produces a single `.mopkg` carrying the deck **and** its scripts. The `.pptx` container is never modified.
+- **Trust model, not wishful thinking:** scripts you write run immediately; a script file that arrived from elsewhere (download, email, USB, sync) needs a one-time approval naming the file and its scripts, remembered per file **content** (SHA-256) — edit it and you are asked again. Trusted folders, a global off switch, and **no auto-run on open**.
+- **Sandboxing claims kept honest:** `import` is limited to a safe module list (`import os` is refused), `open`/`exec`/`eval` are absent, no network, and reading any file outside the deck's folder asks permission first (64 MB cap). The dialog footer says it plainly: *scripts run with the same rights as MyOffice itself.*
+- **Five working examples** ship with it (Add Slides, Fix Titles, Add Pictures, Build Agenda, Charts and Tables), and every one of them is executed by the test suite on every build.
+- **One interpreter for every macro:** the sheet/writer macro engine and the presentation scripts now share `app/macros/engine.py`, so timeout, Stop, output capture and error formatting can never drift apart.
+
+Windows-only release — the Android app is unchanged at `1.6.4`. Docs: `docs/SCRIPTING_GUIDE.md` (user guide + full API reference), `docs/SCRIPTING_DESIGN.md`, `docs/SCRIPTING_RESEARCH.md`.
+
 ## What is new in `v1.6.5` — "Scan Wi-Fi Router & USB" no longer crashes the app
 
 **The bug (Windows):** pressing **Scan Wi-Fi Router & USB** in *Backup & Vault* produced a
