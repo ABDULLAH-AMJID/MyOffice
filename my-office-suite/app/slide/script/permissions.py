@@ -4,7 +4,8 @@ Scripts cannot use ``open()`` (it is not in the macro builtins) — the only way
 script touches the filesystem is through API methods that take a path, such as
 ``shapes.add_picture("logo.png")``.  Everything that does so is routed through
 :class:`FileGate`, which lets paths inside the document's folder through and asks
-the user about anything else, once per file per run.
+the user about anything else, once per file per run.  Untitled documents have no
+folder of their own, so nothing is free except the working directory.
 
 This is a *permission* mechanism, not a sandbox: see
 ``docs/SCRIPTING_DESIGN.md`` §6.5.
@@ -32,7 +33,12 @@ class FileGate:
     """Allow reads inside the deck's folder; ask about everything else."""
 
     def __init__(self, doc_path: str | None = None, ask: Callable[[str, str], bool] | None = None):
-        self.base = Path(doc_path).resolve().parent if doc_path else Path.home().resolve()
+        # "Free" means inside the folder the document was saved in.  With no saved document
+        # there is no such folder: fall back to the process working directory (the install
+        # folder for a desktop app) rather than the home folder — on Windows the whole user
+        # profile (Documents, Desktop, Downloads, TEMP) lives under home, which would have
+        # made every read free.
+        self.base = Path(doc_path).resolve().parent if doc_path else Path.cwd().resolve()
         self.ask = ask
         self.granted: set[Path] = set()
         self.denied: set[Path] = set()

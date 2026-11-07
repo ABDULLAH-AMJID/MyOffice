@@ -367,13 +367,13 @@ def test_app_open_is_permission_gated(slide_doc, tmp_path, monkeypatch):
     other.parent.mkdir()
     other.write_bytes(b"not really a deck")
 
-    gate = FileGate(None, ask=lambda path, purpose: False)
+    gate = FileGate(tmp_path / "deckdir" / "deck.pptx", ask=lambda path, purpose: False)
     api = AppAPI(None, gate=gate, doc=slide_doc)
     with pytest.raises(MacroError):
         api.open(str(other))
 
     asked = []
-    gate2 = FileGate(None, ask=lambda path, purpose: asked.append(path) or True)
+    gate2 = FileGate(tmp_path / "deckdir" / "deck.pptx", ask=lambda path, purpose: asked.append(path) or True)
     api2 = AppAPI(None, gate=gate2, doc=slide_doc)
     try:
         api2.open(str(other))            # allowed → reaches MainWindow.open_path(None main) and fails there
@@ -382,13 +382,19 @@ def test_app_open_is_permission_gated(slide_doc, tmp_path, monkeypatch):
     assert asked == [str(other)]
 
 
-def test_no_ask_means_reads_are_refused(slide_doc, make_png):
+def test_no_ask_means_reads_are_refused(slide_doc, make_png, tmp_path):
     from app.macros.errors import MacroError
     from app.slide.script.permissions import FileGate
 
-    gate = FileGate(None, ask=None)
+    doc_dir = tmp_path / "deckdir"
+    doc_dir.mkdir()
+    gate = FileGate(doc_dir / "deck.pptx", ask=None)
     with pytest.raises(MacroError):
         gate.read_bytes(make_png("g.png"))
+
+    # untitled documents have no folder of their own: the working directory, nothing wider
+    bare = FileGate(None, ask=None)
+    assert bare.base == Path.cwd().resolve()
 
 
 def test_disabled_scripts_are_refused_by_the_dialog(slide_doc):
