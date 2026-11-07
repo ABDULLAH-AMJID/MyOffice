@@ -1,18 +1,18 @@
 {
   "schema": "myoffice-ota-v2",
-  "version": "1.6.5",
-  "version_code": 10605,
-  "date": "2026-10-29T14:25:13Z",
-  "notes": "Windows 1.6.5 — fixed the 'Scan Wi-Fi Router & USB' crash: the scan no longer raises TypeError/AttributeError, background callbacks now run on the GUI thread (no more 'Not Responding' / blank white window), a destroyed dialog is safe, and discovery is a real bounded parallel probe of USB drives + router SMB/FTP shares. Android unchanged at 1.6.4.",
+  "version": "1.6.6",
+  "version_code": 10606,
+  "date": "2026-11-07T21:09:47Z",
+  "notes": "Windows 1.6.6 — Presentation Scripts (MyOffice Script): Python automation for decks with Alt+F8 — object model (slides, shapes, text, tables, charts, animations, themes), Run/Stop editor, one undo entry per run with full rollback on error, .moscript sidecar next to the deck, .mopkg packaged export, trust approvals per file content, permission-gated file reads, five shipped examples. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-  "sha256": "05b54fa78e053d19d4fa915b9783cbeaa8aa668f04b4623ce7e5e48496825f62",
-  "size": 122120937,
+  "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
+  "size": 122046531,
   "android": {
     "version": "1.6.4",
     "version_code": 10604,
-    "min_native_code": 10604,
+    "min_native_code": 10600,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
     "bundle_sha256": "fefe04d7202b77579e53ff2ab7b335875c795d35f049cd329411a8841791da28",
     "bundle_size": 53116,
@@ -22,15 +22,15 @@
     "apk_size": 7014361
   },
   "windows": {
-    "version": "1.6.5",
+    "version": "1.6.6",
     "min_binary_version": "1.0.0",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "82955dc9d52b61408749617065150efb8faac8d1f20529056cf309bc648ff1bc",
-    "patch_size": 1175129,
-    "patch_files": 156,
+    "patch_sha256": "247e6e5ba0e864eb13a9aac45c2a917ac99617afee4dd37c60a9c8602d96ea6e",
+    "patch_size": 1209853,
+    "patch_files": 174,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-    "installer_sha256": "05b54fa78e053d19d4fa915b9783cbeaa8aa668f04b4623ce7e5e48496825f62",
-    "installer_size": 122120937
+    "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
+    "installer_size": 122046531
   },
-  "signature": "MEQCIFeOzLgePhSTfKnhCjyeQEDPrxnePMPOAzsIwNQb8qH+AiARlj4qtC40Vvs+B0leL/mnoiaCru6DD3zDjPXtHxV/cw=="
+  "signature": "MEYCIQCGfwe+OL4VgFWIIg3gb5ZC94jzbZ3iP8/5MvjV2gPUdgIhAILz4uctxNbfEmsMb4dcPgyYdRWB9kWOBnOXqw6xN0eo"
 }
