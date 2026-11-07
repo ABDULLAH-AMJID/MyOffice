@@ -102,6 +102,12 @@ PowerPoint-style macro automation, rebuilt for MyOffice and **without unlocking 
 
 Windows-only release — the Android app is unchanged at `1.6.4`. Docs: `docs/SCRIPTING_GUIDE.md` (user guide + full API reference), `docs/SCRIPTING_DESIGN.md`, `docs/SCRIPTING_RESEARCH.md`.
 
+**Release status:** Windows installs already on `v1.6.5` (or any `1.5+` build) receive this as a **signed Tier-1
+hot-patch** (`ota/windows-patch.zip`, 1,209,853 B, 174 files) — applied in under a second, no 122 MB download. New
+installs get `MyOffice_Setup.exe` **v1.6.6** (`122,046,531` B, sha `e1f58a96…52ce`), which contains the feature
+directly. Full suite: **350 passed, 1 skipped**; the CI Windows runner reports 348 passed, 3 skipped (platform
+skips) plus the frozen-app smoke test.
+
 ## What is new in `v1.6.5` — "Scan Wi-Fi Router & USB" no longer crashes the app
 
 **The bug (Windows):** pressing **Scan Wi-Fi Router & USB** in *Backup & Vault* produced a
