@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.6",
   "version_code": 10606,
-  "date": "2026-11-07T21:09:47Z",
+  "date": "2026-11-13T19:37:35Z",
   "notes": "Windows 1.6.6 — Presentation Scripts (MyOffice Script): Python automation for decks with Alt+F8 — object model (slides, shapes, text, tables, charts, animations, themes), Run/Stop editor, one undo entry per run with full rollback on error, .moscript sidecar next to the deck, .mopkg packaged export, trust approvals per file content, permission-gated file reads, five shipped examples. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -10,16 +10,16 @@
   "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
   "size": 122046531,
   "android": {
-    "version": "1.6.4",
-    "version_code": 10604,
+    "version": "1.7.0",
+    "version_code": 10700,
     "min_native_code": 10600,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
-    "bundle_sha256": "fefe04d7202b77579e53ff2ab7b335875c795d35f049cd329411a8841791da28",
-    "bundle_size": 53116,
+    "bundle_sha256": "b9211e31df303f97f073c148b949b48b8940af43d876e2d183c37e10ef81cbf4",
+    "bundle_size": 58227,
     "bundle_files": 5,
-    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.4/MyOffice_Android.apk",
-    "apk_sha256": "10ce15606bfa79ee4347cf23b72cfcb4e90cc788163826aca4c00b2a020eb84e",
-    "apk_size": 7014361
+    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.6/MyOffice_Android.apk",
+    "apk_sha256": "c8781eb8aab09051043e9540f6a7ff99997c923582227ab9d2a4a9e7130584e4",
+    "apk_size": 7035993
   },
   "windows": {
     "version": "1.6.6",
@@ -32,5 +32,5 @@
     "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
     "installer_size": 122046531
   },
-  "signature": "MEYCIQCGfwe+OL4VgFWIIg3gb5ZC94jzbZ3iP8/5MvjV2gPUdgIhAILz4uctxNbfEmsMb4dcPgyYdRWB9kWOBnOXqw6xN0eo"
+  "signature": "MEUCIQCFrkO4ktSpdcddS1GSTIu5fNuZl0gk/qjuH6SzEDfjpQIgN2XSQAhurVreJkpMm7zxKX5hOzjNhXIYcbcEw7G2jBo="
 }

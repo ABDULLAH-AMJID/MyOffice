@@ -411,6 +411,105 @@ textarea {
   border-bottom-color: var(--accent);
 }
 
+/* ---- On-device library bar (scope + sort) ---- */
+.lib-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 2px;
+}
+
+.lib-scope {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.1));
+}
+
+.lib-scope-btn {
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 8px 14px;
+  min-height: 36px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lib-scope-btn.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.lib-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.lib-sort-btn:active {
+  opacity: 0.72;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 550;
+  text-align: start;
+  cursor: pointer;
+}
+
+.sort-row:last-child {
+  border-bottom: none;
+}
+
+.sort-row .sort-check {
+  margin-inline-start: auto;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.sort-row.active .sort-check {
+  opacity: 1;
+}
+
+.file-row .file-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.14);
+  color: var(--ink-secondary);
+  vertical-align: middle;
+}
+
 .sheet-group {
   background: var(--surface);
   border-radius: 14px;

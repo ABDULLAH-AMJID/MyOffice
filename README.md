@@ -56,6 +56,33 @@ DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
 
 ---
 
+## What is new in `v1.7.0` — your phone's own documents, already in the app (Android)
+
+**The complaint:** opening a document began with *importing* it through the system picker — a detour through
+file-manager screens before anything could be read. **v1.7.0 removes the import step entirely.**
+
+* **Every document on the phone is listed on the Home screen.** With "All files access" granted, MyOffice walks
+  internal storage and SD cards (skipping `Android/data`, `Android/obb`, thumbnails and hidden folders) and merges
+  whatever `MediaStore` already indexed. Supported families: PDF, Word (`docx/doc/rtf/odt/txt/md/html`), Excel
+  (`xlsx/xls/xlsm/csv/tsv/ods`), PowerPoint (`pptx/ppt/ppsx/pptm/odp`), images (`png/jpg/webp/heic/…`) and vaults.
+* **Opened in place, not copied.** The document keeps its real path: `Save` writes back to `Download`, `Documents`,
+  `WhatsApp/Media` or the SD card. If a folder is read-only, the work is saved as a named copy in MyOffice and the
+  toast says exactly that — nothing is ever lost silently.
+* **Sort by name, date modified, size, type or last used.** Last-used time is recorded locally each time a document
+  is opened; the sort order and the All files / MyOffice scope are remembered in the encrypted config.
+* **Filter chips** — All, Starred, Writer, Sheets, Slides, PDF, Images, Vault — now apply to phone files and
+  MyOffice files alike, and search matches file names *and* folder names.
+* **No permission nags.** The "All files access" card appears only while access is missing; the library falls back
+  to MediaStore results meanwhile, so the screen is never empty. `Rescan` lives in the sort sheet; scans are cached
+  for ten minutes so app start stays instant.
+* Long-press any phone file for **Open · Copy into MyOffice · File details · Share**.
+
+Windows is unchanged in this release (still `v1.6.6`); this is an Android-only feature, so the OTA manifest pins the
+Android descriptor to `1.7.0` / `10700` and the APK link to the `v1.6.6` release asset that carries the build.
+Older installs update in place — the APK is signed with the same production certificate (`6A:D6:5F:F2…`).
+
+---
+
 ## What is new in `v1.6.4` — Android QR scanning that actually scans
 
 **The bug:** every "Scan QR" button on Android opened the *system photo camera* (`ACTION_IMAGE_CAPTURE`), and a

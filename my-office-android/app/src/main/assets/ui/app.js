@@ -110,7 +110,30 @@
       prefLang: "Interface Language",
       prefTheme: "Appearance",
       themeLight: "Paper Light",
-      themeDark: "Carbon Dark"
+      themeDark: "Carbon Dark",
+      scopeAll: "All files",
+      scopeMine: "MyOffice",
+      libSort: "Sort",
+      sortNewest: "Newest first",
+      sortOldest: "Oldest first",
+      sortNameAsc: "Name (A–Z)",
+      sortNameDesc: "Name (Z–A)",
+      sortLargest: "Largest first",
+      sortSmallest: "Smallest first",
+      sortType: "File type",
+      sortLastUsed: "Last used",
+      libAccessTitle: "Show files already on this phone",
+      libAccessDesc: "Download, Documents, WhatsApp and SD card — opened in place, no importing.",
+      libAllow: "Allow",
+      libOn: "All phone files are included",
+      libOff: "Only MyOffice files are shown",
+      libScanning: "Scanning this phone…",
+      libRescan: "Rescan",
+      phone: "Phone",
+      copyToMine: "Copy into MyOffice",
+      details: "File details",
+      originalLocation: "Original file",
+      readOnlyFolder: "This folder is read-only"
     },
     ur: {
       dir: "rtl",
@@ -192,7 +215,30 @@
       prefLang: "زبان منتخب کریں",
       prefTheme: "تھیم",
       themeLight: "روشن کاغذ",
-      themeDark: "ڈارک موڈ"
+      themeDark: "ڈارک موڈ",
+      scopeAll: "تمام فائلیں",
+      scopeMine: "مائی آفس",
+      libSort: "ترتیب",
+      sortNewest: "نئی پہلے",
+      sortOldest: "پرانی پہلے",
+      sortNameAsc: "نام (ا–ی)",
+      sortNameDesc: "نام (ی–ا)",
+      sortLargest: "بڑی پہلے",
+      sortSmallest: "چھوٹی پہلے",
+      sortType: "فائل کی قسم",
+      sortLastUsed: "آخری استعمال",
+      libAccessTitle: "اس فون میں موجود فائلیں دکھائیں",
+      libAccessDesc: "ڈاؤن لوڈ، ڈاکومنٹس، واٹس ایپ اور ایس ڈی کارڈ — سیدھا کھلیں، امپورٹ کی ضرورت نہیں۔",
+      libAllow: "اجازت دیں",
+      libOn: "فون کی تمام فائلیں شامل ہیں",
+      libOff: "صرف مائی آفس کی فائلیں دکھی ہیں",
+      libScanning: "فون اسکین ہو رہا ہے…",
+      libRescan: "دوبارہ اسکین",
+      phone: "فون",
+      copyToMine: "مائی آفس میں کاپی کریں",
+      details: "فائل کی تفصیل",
+      originalLocation: "اصل فائل",
+      readOnlyFolder: "یہ فولڈر صرف پڑھنے کے لیے ہے"
     },
     hi: {
       dir: "ltr",
@@ -274,15 +320,75 @@
       prefLang: "भाषा चुनें",
       prefTheme: "दिखावट",
       themeLight: "पेपर लाइट",
-      themeDark: "कार्बन डार्क"
+      themeDark: "कार्बन डार्क",
+      scopeAll: "सभी फ़ाइलें",
+      scopeMine: "MyOffice",
+      libSort: "क्रम",
+      sortNewest: "नई पहले",
+      sortOldest: "पुरानी पहले",
+      sortNameAsc: "नाम (A–Z)",
+      sortNameDesc: "नाम (Z–A)",
+      sortLargest: "बड़ी पहले",
+      sortSmallest: "छोटी पहले",
+      sortType: "फ़ाइल प्रकार",
+      sortLastUsed: "अंतिम उपयोग",
+      libAccessTitle: "इस फ़ोन की फ़ाइलें दिखाएँ",
+      libAccessDesc: "डाउनलोड, दस्तावेज़, WhatsApp और SD कार्ड — सीधे खोलें, आयात की ज़रूरत नहीं।",
+      libAllow: "अनुमति दें",
+      libOn: "फ़ोन की सभी फ़ाइलें शामिल हैं",
+      libOff: "केवल MyOffice फ़ाइलें दिख रही हैं",
+      libScanning: "फ़ोन स्कैन हो रहा है…",
+      libRescan: "दोबारा स्कैन",
+      phone: "फ़ोन",
+      copyToMine: "MyOffice में कॉपी करें",
+      details: "फ़ाइल विवरण",
+      originalLocation: "मूल फ़ाइल",
+      readOnlyFolder: "यह फ़ोल्डर केवल पढ़ने योग्य है"
     }
   };
+
+  const DEVICE_SORT_KEY = "myoffice_device_sort";
+  const DEVICE_SCOPE_KEY = "myoffice_device_scope";
+  const LAST_USED_KEY = "myoffice_last_used";
+
+  function readJson(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch (_) { return fallback; }
+  }
+
+  function writeJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+  }
+
+  const SORT_KEYS = {
+    newest: "sortNewest",
+    oldest: "sortOldest",
+    name_asc: "sortNameAsc",
+    name_desc: "sortNameDesc",
+    largest: "sortLargest",
+    smallest: "sortSmallest",
+    type: "sortType",
+    last_used: "sortLastUsed"
+  };
+
+  function tr(key) {
+    const pack = I18N[state.lang] || I18N.en;
+    return pack[key] || I18N.en[key] || key;
+  }
 
   const state = {
     lang: "en",
     theme: "light",
     activeTab: "home",
     filter: "all",
+    scope: localStorage.getItem(DEVICE_SCOPE_KEY) || "all",
+    deviceFiles: [],
+    deviceGranted: false,
+    deviceScannedAt: 0,
+    deviceLoading: false,
+    renderLimit: 200,
+    renderKey: "",
+    sortMode: localStorage.getItem(DEVICE_SORT_KEY) || "newest",
+    lastUsed: readJson(LAST_USED_KEY, {}),
     files: [],
     config: {},
     version: "1.6.0",
@@ -457,6 +563,114 @@
     updateHeaderTitle();
   }
 
+  // ==================== ON-DEVICE DOCUMENT LIBRARY ====================
+
+  /** Load the phone's own documents (cached by the native side for ~10 minutes). */
+  async function refreshDeviceFiles(refresh = false) {
+    if (state.deviceLoading) return;
+    state.deviceLoading = true;
+    renderDeviceAccessCard();
+    try {
+      const res = await nativeCall("listDeviceFiles", { refresh });
+      state.deviceFiles = res.files || [];
+      state.deviceGranted = Boolean(res.granted);
+      state.deviceScannedAt = res.scannedAt || Date.now();
+    } catch (_) {
+      state.deviceFiles = [];
+    }
+    state.deviceLoading = false;
+    renderDeviceAccessCard();
+    renderFiles();
+  }
+
+  async function checkDeviceAccess() {
+    try {
+      const res = await nativeCall("deviceAccess");
+      state.deviceGranted = Boolean(res.granted);
+    } catch (_) {
+      state.deviceGranted = false;
+    }
+    renderDeviceAccessCard();
+    return state.deviceGranted;
+  }
+
+  function renderDeviceAccessCard() {
+    const card = document.getElementById("deviceAccessCard");
+    const sortLabel = document.getElementById("libSortLabel");
+    if (sortLabel) sortLabel.textContent = tr(SORT_KEYS[state.sortMode] || "sortNewest");
+    document.querySelectorAll("#libScope .lib-scope-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.scope === state.scope);
+    });
+    if (!card) return;
+    // The card only nags while access is missing; once granted it collapses to a hint row.
+    if (state.deviceGranted) {
+      card.classList.add("hidden");
+      return;
+    }
+    card.classList.remove("hidden");
+    const title = document.getElementById("deviceAccessTitle");
+    const desc = document.getElementById("deviceAccessDesc");
+    const btn = document.getElementById("deviceAccessBtn");
+    if (title) title.textContent = tr("libAccessTitle");
+    if (desc) desc.textContent = state.deviceLoading ? tr("libScanning") : tr("libAccessDesc");
+    if (btn) {
+      btn.textContent = state.deviceLoading ? "…" : tr("libAllow");
+      btn.disabled = state.deviceLoading;
+    }
+  }
+
+  function openSortSheet() {
+    const order = ["newest", "oldest", "last_used", "name_asc", "name_desc", "type", "largest", "smallest"];
+    showModal(`
+      <h3 class="modal-title">${esc(tr("libSort"))}</h3>
+      <div class="sheet-group">
+        ${order.map((k) => `
+          <button class="sort-row ${state.sortMode === k ? "active" : ""}" onclick="App.setSortMode('${k}')">
+            <span>${esc(tr(SORT_KEYS[k]))}</span>
+            <span class="sort-check">${svgIcon("check", "ico ico-sm")}</span>
+          </button>`).join("")}
+      </div>
+      <div class="sheet-group">
+        <button class="sort-row" onclick="App.rescanDevice()">
+          ${svgIcon("sync", "ico ico-sm")}
+          <span style="margin-inline-start:6px">${esc(tr("libRescan"))}</span>
+        </button>
+      </div>
+    `);
+  }
+
+  function setSortMode(mode) {
+    state.sortMode = mode;
+    localStorage.setItem(DEVICE_SORT_KEY, mode);
+    nativeCall("saveSettings", { deviceSort: mode }).catch(() => {});
+    closeModal();
+    renderDeviceAccessCard();
+    renderFiles();
+    toast(tr("libSort") + ": " + tr(SORT_KEYS[mode] || "sortNewest"));
+  }
+
+  function setScope(scope, btn) {
+    state.scope = scope === "myoffice" ? "myoffice" : "all";
+    localStorage.setItem(DEVICE_SCOPE_KEY, state.scope);
+    nativeCall("saveSettings", { deviceScope: state.scope }).catch(() => {});
+    document.querySelectorAll("#libScope .lib-scope-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    if (state.scope === "all" && state.deviceGranted && !state.deviceFiles.length && !state.deviceLoading) {
+      refreshDeviceFiles(false);
+    } else {
+      renderFiles();
+    }
+  }
+
+  function isDeviceFile(path) {
+    return state.deviceFiles.some((f) => f.path === path);
+  }
+
+  function folderOf(path) {
+    const p = String(path || "").replace(/\\/g, "/");
+    const idx = p.lastIndexOf("/");
+    return idx > 0 ? p.slice(0, idx) : "";
+  }
+
   function refreshPdfDropdown() {
     const sel = document.getElementById("aiPdfSelect");
     if (!sel) return;
@@ -469,15 +683,64 @@
     return String(name || "").replace(/\.(docx|xlsx|pptx|pdf|movault|movaultkey|txt|md|csv|png|jpe?g|webp)$/i, "");
   }
 
+  /** Every openable file: MyOffice documents first, then the rest of the phone. */
+  function allDocuments() {
+    const mine = state.files.map((f) => ({
+      ...f,
+      source: "myoffice",
+      path: f.rel,
+      folder: f.rel.includes("/") ? f.rel.slice(0, f.rel.lastIndexOf("/")) : "MyOffice",
+    }));
+    const device = state.scope === "myoffice" ? [] : state.deviceFiles.map((f) => ({
+      ...f,
+      rel: f.path,
+      type: f.kind,
+      mtime: f.modified || 0,
+      starred: Boolean(f.starred),
+      source: "device",
+    }));
+    return mine.concat(device);
+  }
+
+  function compareDocs(a, b) {
+    const la = state.lastUsed[a.path] || 0;
+    const lb = state.lastUsed[b.path] || 0;
+    const byName = (x, y) => String(x.name).localeCompare(String(y.name), undefined, { sensitivity: "base" });
+    switch (state.sortMode) {
+      case "oldest": return (a.mtime - b.mtime) || byName(a, b);
+      case "name_asc": return byName(a, b);
+      case "name_desc": return byName(b, a);
+      case "largest": return (b.size - a.size) || byName(a, b);
+      case "smallest": return (a.size - b.size) || byName(a, b);
+      case "type": {
+        const order = { pdf: 0, writer: 1, sheet: 2, slide: 3, photos: 4, vault: 5 };
+        return ((order[a.type] ?? 9) - (order[b.type] ?? 9)) || (b.mtime - a.mtime) || byName(a, b);
+      }
+      case "last_used": return (lb - la) || (b.mtime - a.mtime) || byName(a, b);
+      default: return (b.mtime - a.mtime) || byName(a, b);
+    }
+  }
+
   function renderFiles() {
     const q = (document.getElementById("searchInput")?.value || "").trim().toLowerCase();
     const listEl = document.getElementById("fileList");
-    const filtered = state.files.filter((f) => {
+    if (!listEl) return;
+    renderDeviceAccessCard();
+    const filtered = allDocuments().filter((f) => {
       if (state.filter === "starred" && !f.starred) return false;
       if (state.filter !== "all" && state.filter !== "starred" && f.type !== state.filter) return false;
-      if (q && !f.name.toLowerCase().includes(q) && !f.rel.toLowerCase().includes(q)) return false;
+      if (q && !String(f.name).toLowerCase().includes(q) && !String(f.rel).toLowerCase().includes(q)
+          && !String(f.folder || "").toLowerCase().includes(q)) return false;
       return true;
-    });
+    }).sort(compareDocs);
+
+    // A phone can hold thousands of files; draw a window and extend it on demand.
+    const viewKey = [state.filter, q, state.scope, state.sortMode].join("|");
+    if (viewKey !== state.renderKey) {
+      state.renderKey = viewKey;
+      state.renderLimit = 200;
+    }
+    const visible = filtered.slice(0, state.renderLimit);
 
     if (!filtered.length) {
       listEl.innerHTML = `
@@ -491,22 +754,24 @@
       return;
     }
 
-    listEl.innerHTML = filtered.map((f) => {
+    listEl.innerHTML = visible.map((f) => {
       const spec = formatSpec(f.type, f.ext);
       const displayTitle = stripKnownExt(f.name) || f.name;
-      const folderPrefix = f.rel.includes("/") ? f.rel.slice(0, f.rel.lastIndexOf("/")) + " · " : "";
+      const folderPrefix = f.folder ? f.folder + " · " : "";
+      const sourceChip = f.source === "device" ? ` <span class="file-source">${esc(f.folder || "Phone")}</span>` : "";
       const metaLine = `${folderPrefix}${(f.ext || "FILE").toUpperCase()} · ${fmtSize(f.size)} · ${fmtDateShort(f.mtime)}`;
+      const key = esc(f.rel).replace(/'/g, "&#39;");
       return `
-        <div class="file-row" data-rel="${esc(f.rel)}" onclick="App.openFile('${esc(f.rel)}')">
+        <div class="file-row" data-rel="${esc(f.rel)}" data-source="${f.source}" onclick="App.openFile('${key}')">
           <div class="file-badge" style="color:${spec.fg};background:${spec.bg}">${esc(spec.label)}</div>
           <div class="file-body">
             <div class="file-title">
               ${f.starred ? `<span class="star-mark">${svgIcon("star", "ico ico-sm")}</span>` : ""}
-              <span>${esc(displayTitle)}</span>
+              <span>${esc(displayTitle)}</span>${sourceChip}
             </div>
             <div class="file-sub">${esc(metaLine)}</div>
           </div>
-          <button class="row-more-btn" onclick="event.stopPropagation();App.openFileMenu('${esc(f.rel)}')" aria-label="Document options">
+          <button class="row-more-btn" onclick="event.stopPropagation();App.openFileMenu('${key}')" aria-label="Document options">
             ${svgIcon("more")}
           </button>
         </div>
@@ -514,6 +779,15 @@
     }).join("");
 
     // Attach natural Android 480ms long-press gesture on file rows
+    if (filtered.length > visible.length) {
+      const more = document.createElement("button");
+      more.className = "btn";
+      more.style.cssText = "width:100%;margin-top:10px";
+      more.textContent = `Show ${Math.min(200, filtered.length - visible.length)} more of ${filtered.length}`;
+      more.onclick = () => { state.renderLimit += 200; renderFiles(); };
+      listEl.appendChild(more);
+    }
+
     listEl.querySelectorAll(".file-row").forEach((row) => {
       let pressTimer = null;
       row.addEventListener("touchstart", () => {
@@ -528,10 +802,32 @@
   }
 
   // ==================== DOCUMENT LIFECYCLE & AUTO-SAVE ====================
+  /** "Saved X" — plus a plain warning when the source folder was read-only. */
+  function savedMessage() {
+    const doc = state.doc || {};
+    const msg = doc.pendingWarning || ("Saved " + doc.name);
+    doc.pendingWarning = "";
+    return msg;
+  }
+
+  function markFileUsed(path) {
+    if (!path) return;
+    state.lastUsed[path] = Date.now();
+    const keys = Object.keys(state.lastUsed);
+    if (keys.length > 500) {
+      // keep the map small: drop the 100 least recently opened entries
+      keys.sort((a, b) => state.lastUsed[a] - state.lastUsed[b])
+        .slice(0, keys.length - 400)
+        .forEach((k) => delete state.lastUsed[k]);
+    }
+    writeJson(LAST_USED_KEY, state.lastUsed);
+  }
+
   async function openFile(rel, extra = {}) {
     try {
       const doc = await nativeCall("openDocument", Object.assign({ path: rel }, extra));
       state.doc = doc;
+      markFileUsed(rel);
       if (doc.unlockedFromVault) toast(`Unlocked ${doc.name}`);
       renderActiveEditor();
       await refreshWorkspace();
@@ -682,21 +978,36 @@
     return blocks;
   }
 
+  /** Fold a save response back into the open document (in-place saves, read-only copies). */
+  function applySaveResult(res) {
+    if (!res || !state.doc) return res;
+    if (res.abs) state.doc.abs = res.abs;
+    if (typeof res.external === "boolean") state.doc.external = res.external;
+    if (res.savedCopy) {
+      state.doc.rel = res.savedCopy;
+      state.doc.pendingWarning = res.warning || "";
+      nativeCall("listFiles").then((r) => { state.files = r.files || []; }).catch(() => {});
+    }
+    return res;
+  }
+
   async function saveWriterNow(silent = false) {
     const surf = document.getElementById("writerSurface");
     if (!surf || !state.doc) return;
     const blocks = collectWriterBlocks();
-    await nativeCall("saveDocument", {
+    const res = await nativeCall("saveDocument", {
       kind: "writer",
       rel: state.doc.rel,
+      abs: state.doc.abs || "",
       blocks,
       plainText: surf.innerText || "",
       html: surf.innerHTML
     });
-    if (state.collabRoom) {
+    applySaveResult(res);
+    if (state.collabRoom && !state.doc.external) {
       await nativeCall("pushCollabSnapshot", { room: state.collabRoom, path: state.doc.rel, kind: "writer" });
     }
-    if (!silent) toast("Saved " + state.doc.name);
+    if (!silent) toast(savedMessage());
   }
 
   // ==================== 2. FLAGSHIP SPREADSHEETS EDITOR ====================
@@ -820,8 +1131,9 @@
 
   async function saveSheetNow(silent = false) {
     if (!state.doc) return;
-    await nativeCall("saveDocument", { kind: "sheet", rel: state.doc.rel, sheets: state.doc.sheets });
-    if (state.collabRoom) {
+    const res = await nativeCall("saveDocument", { kind: "sheet", rel: state.doc.rel, abs: state.doc.abs || "", sheets: state.doc.sheets });
+    applySaveResult(res);
+    if (state.collabRoom && !state.doc.external) {
       await nativeCall("pushCollabSnapshot", { room: state.collabRoom, path: state.doc.rel, kind: "sheet" });
     }
     if (!silent) toast("Saved " + state.doc.name);
@@ -903,8 +1215,9 @@
 
   async function saveSlidesNow(silent = false) {
     if (!state.doc) return;
-    await nativeCall("saveDocument", { kind: "slide", rel: state.doc.rel, slides: state.doc.slides });
-    if (state.collabRoom) {
+    const res = await nativeCall("saveDocument", { kind: "slide", rel: state.doc.rel, abs: state.doc.abs || "", slides: state.doc.slides });
+    applySaveResult(res);
+    if (state.collabRoom && !state.doc.external) {
       await nativeCall("pushCollabSnapshot", { room: state.collabRoom, path: state.doc.rel, kind: "slide" });
     }
     if (!silent) toast("Saved " + state.doc.name);
@@ -1148,6 +1461,12 @@
   }
 
   // ==================== NATIVE CALLBACKS ====================
+  window.__onDeviceAccessChanged = function (raw) {
+    let payload = raw;
+    if (typeof raw === "string") { try { payload = JSON.parse(raw); } catch (_) { payload = {}; } }
+    App.onDeviceAccessChanged(payload || {});
+  };
+
   window.__onNativeFileImported = async function (raw) {
     const info = JSON.parse(raw);
     await refreshWorkspace();
@@ -1668,7 +1987,85 @@
       }
     },
 
+    refreshDeviceFiles,
+    async requestDeviceAccess() {
+      try {
+        await nativeCall("requestDeviceAccess");
+        // The system screen is a separate activity; re-check when the user comes back.
+        setTimeout(() => { checkDeviceAccess().then(() => refreshDeviceFiles(true)); }, 900);
+      } catch (e) {
+        toast(e.message);
+      }
+    },
+    onDeviceAccessChanged(payload) {
+      const granted = Boolean(payload && payload.granted);
+      state.deviceGranted = granted;
+      renderDeviceAccessCard();
+      refreshDeviceFiles(true);
+    },
+    openSortSheet,
+    rescanDevice() {
+      closeModal();
+      state.deviceFiles = [];
+      refreshDeviceFiles(true);
+      toast(tr("libScanning"));
+    },
+    setSortMode,
+    setScope,
+    copyToWorkspace(path) {
+      closeModal();
+      nativeCall("copyToWorkspace", { path })
+        .then(async (r) => {
+          await refreshWorkspace();
+          toast(tr("copyToMine") + " · " + r.rel);
+        })
+        .catch((e) => toast(e.message));
+    },
+    async fileDetails(path) {
+      closeModal();
+      try {
+        const d = await nativeCall("fileDetails", { path });
+        showModal(`
+          <h3 class="modal-title">${esc(d.name)}</h3>
+          <div class="sheet-group">
+            <div class="sort-row" style="cursor:default"><span>${esc(tr("originalLocation"))}</span><span class="sort-check" style="opacity:1;color:var(--ink-secondary);font-size:12px;word-break:break-all;text-align:end">${esc(d.folder || d.path)}</span></div>
+            <div class="sort-row" style="cursor:default"><span>${esc(tr("sortType"))}</span><span class="sort-check" style="opacity:1;color:var(--ink-secondary);font-size:12px">${esc(String(d.name).split(".").pop().toUpperCase())}</span></div>
+            <div class="sort-row" style="cursor:default"><span>Size</span><span class="sort-check" style="opacity:1;color:var(--ink-secondary);font-size:12px">${fmtSize(d.size)}</span></div>
+            <div class="sort-row" style="cursor:default"><span>Modified</span><span class="sort-check" style="opacity:1;color:var(--ink-secondary);font-size:12px">${fmtDateShort(d.modified)}</span></div>
+          </div>
+          ${d.writable ? "" : `<p style="font-size:12.5px;color:var(--ink-muted);margin-top:10px">${esc(tr("readOnlyFolder"))}</p>`}
+        `);
+      } catch (e) {
+        toast(e.message);
+      }
+    },
+
     openFileMenu(rel) {
+      if (isDeviceFile(rel)) {
+        const name = String(rel).split("/").pop();
+        const key = esc(rel).replace(/'/g, "&#39;");
+        showModal(`
+          <h3 class="modal-title">${esc(name)}</h3>
+          <div class="sheet-group" style="margin-bottom:8px">
+            <div class="sort-row" style="cursor:default"><span>${esc(tr("originalLocation"))}</span><span class="sort-check" style="opacity:1;color:var(--ink-secondary);font-size:11.5px;word-break:break-all;text-align:end">${esc(folderOf(rel))}</span></div>
+          </div>
+          <div class="action-list" style="border:1px solid var(--line);margin-bottom:0;">
+            <button class="action-row" onclick="App.closeModal();App.openFile('${key}')">
+              ${svgIcon("folder")}<div class="action-row-body"><div class="action-row-title">Open</div></div>
+            </button>
+            <button class="action-row" onclick="App.copyToWorkspace('${key}')">
+              ${svgIcon("copy")}<div class="action-row-body"><div class="action-row-title">${esc(tr("copyToMine"))}</div></div>
+            </button>
+            <button class="action-row" onclick="App.fileDetails('${key}')">
+              ${svgIcon("sliders")}<div class="action-row-body"><div class="action-row-title">${esc(tr("details"))}</div></div>
+            </button>
+            <button class="action-row" onclick="App.closeModal();App.shareDoc('${key}')">
+              ${svgIcon("share")}<div class="action-row-body"><div class="action-row-title">Share or Send Copy</div></div>
+            </button>
+          </div>
+        `);
+        return;
+      }
       showModal(`
         <h3 class="modal-title">${esc(rel.split("/").pop())}</h3>
         <div class="action-list" style="border:1px solid var(--line);margin-bottom:0;">
@@ -2665,6 +3062,12 @@
       };
       if (init.config.theme) applyTheme(init.config.theme, false);
       if (init.config.lang) state.lang = init.config.lang;
+      if (!localStorage.getItem(DEVICE_SORT_KEY) && init.config.deviceSort) {
+        state.sortMode = init.config.deviceSort;
+      }
+      if (!localStorage.getItem(DEVICE_SCOPE_KEY) && init.config.deviceScope) {
+        state.scope = init.config.deviceScope === "myoffice" ? "myoffice" : "all";
+      }
       document.getElementById("lblVaultKeyId").textContent = init.vaultKeyId || "—";
       document.getElementById("pcUrlInput").value = init.config.pcUrl || "";
       document.getElementById("gmailAddressInput").value = init.config.gmailAddress || "";
@@ -2678,6 +3081,12 @@
       applyLang(false);
       renderFiles();
       refreshPdfDropdown();
+      // The phone's own documents are part of the home screen from the first launch.
+      checkDeviceAccess().then((granted) => {
+        renderDeviceAccessCard();
+        if (granted) refreshDeviceFiles(false);
+        else refreshDeviceFiles(false);
+      });
       // Silent startup GitHub OTA check whenever a repo URL is configured
       if (state.config.updateRepoUrl) {
         setTimeout(async () => {

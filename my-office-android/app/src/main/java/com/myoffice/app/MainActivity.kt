@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingWebFileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraFile: File? = null
     private var pendingApkToInstall: File? = null
+    private var lastDeviceAccessState: Boolean? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bootWatchdogRunnable = Runnable {
         val fallbackUrl = OtaUpdateManager.rollbackToSafeSlot(filesDir, "boot_watchdog_timeout")
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val REQ_LEGACY_STORAGE = 4127
         private val LIGHT_CHROME_BG = Color.parseColor("#FFFFFF")
         private val DARK_CHROME_BG = Color.parseColor("#161615")
     }
@@ -350,6 +352,33 @@ class MainActivity : AppCompatActivity() {
             if (idx >= 0 && c.moveToFirst()) return c.getString(idx)
         }
         return uri.lastPathSegment?.substringAfterLast('/')
+    }
+
+    /** API < 30 has no "All files access" screen, so ask for read permission the old way. */
+    fun requestLegacyStoragePermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), REQ_LEGACY_STORAGE)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LEGACY_STORAGE) {
+            val granted = grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            pushJsEvent("window.__onDeviceAccessChanged", JSONObject().put("ok", true).put("granted", granted).toString())
+        }
+    }
+
+    /** Called by the UI when the user returns from the system "All files access" screen. */
+    override fun onResume() {
+        super.onResume()
+        if (::bridge.isInitialized) {
+            val granted = com.myoffice.app.library.DeviceLibrary.hasAllFilesAccess(this)
+            if (granted != lastDeviceAccessState) {
+                lastDeviceAccessState = granted
+                pushJsEvent("window.__onDeviceAccessChanged", JSONObject().put("ok", true).put("granted", granted).toString())
+            }
+        }
     }
 
     fun launchImportFilePicker() {

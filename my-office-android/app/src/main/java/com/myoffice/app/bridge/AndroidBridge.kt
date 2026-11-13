@@ -33,6 +33,8 @@ import com.myoffice.app.sync.RouterFtpBackend
 import com.myoffice.app.sync.SyncEngineMobile
 import com.myoffice.app.sync.VaultEncryptedBackend
 import com.myoffice.app.update.OtaUpdateManager
+import com.myoffice.app.library.DeviceFile
+import com.myoffice.app.library.DeviceLibrary
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -159,6 +161,19 @@ class AndroidBridge(private val activity: MainActivity) {
                 .setProgress(100, pct, phase == "checking" || phase == "connecting")
             nm.notify(7701, builder.build())
         }
+    }
+
+    private fun uniqueWorkspaceName(name: String): File {
+        var candidate = File(workspaceDir, name)
+        if (!candidate.exists()) return candidate
+        val stem = name.substringBeforeLast('.', name)
+        val ext = name.substringAfterLast('.', "").let { if (it.isBlank() || it == name) "" else ".$it" }
+        var i = 2
+        while (candidate.exists()) {
+            candidate = File(workspaceDir, "$stem ($i)$ext")
+            i++
+        }
+        return candidate
     }
 
     private fun resolveWorkspaceFile(relOrAbs: String): File {
@@ -364,6 +379,64 @@ class AndroidBridge(private val activity: MainActivity) {
             // ---------------- Workspace File Management ----------------
             "listFiles" -> JSONObject().put("ok", true).put("files", listWorkspaceJson())
 
+            // ---------------- On-device document library ----------------
+            // Everything the phone already holds, so opening a file never starts with
+            // "import it through the system picker first".
+            "deviceAccess" -> JSONObject()
+                .put("ok", true)
+                .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
+                .put("apiLevel", android.os.Build.VERSION.SDK_INT)
+                .put("canRequest", android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
+
+            "requestDeviceAccess" -> {
+                val intent = DeviceLibrary.allFilesAccessIntent(activity)
+                if (intent != null) {
+                    activity.runOnUiThread { runCatching { activity.startActivity(intent) } }
+                } else {
+                    activity.runOnUiThread { activity.requestLegacyStoragePermission() }
+                }
+                JSONObject().put("ok", true)
+                    .put("launched", intent != null)
+                    .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
+            }
+
+            "listDeviceFiles" -> {
+                val refresh = args.optBoolean("refresh", false)
+                val limit = args.optInt("limit", 3000)
+                val (files, scannedAt, fromCache) = DeviceLibrary.listCached(activity, refresh, workspaceDir)
+                JSONObject()
+                    .put("ok", true)
+                    .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
+                    .put("scannedAt", scannedAt)
+                    .put("fromCache", fromCache)
+                    .put("total", files.size)
+                    .put("truncated", files.size > limit)
+                    .put("files", DeviceLibrary.toJson(if (files.size > limit) files.take(limit) else files))
+            }
+
+            "copyToWorkspace" -> {
+                val src = File(args.getString("path"))
+                require(src.isFile) { "File not found: ${src.path}" }
+                val dest = uniqueWorkspaceName(src.name)
+                src.copyTo(dest, overwrite = false)
+                JSONObject().put("ok", true).put("rel", dest.name).put("size", dest.length())
+            }
+
+            "fileDetails" -> {
+                val f = File(args.getString("path"))
+                require(f.exists()) { "File not found: ${f.path}" }
+                JSONObject()
+                    .put("ok", true)
+                    .put("name", f.name)
+                    .put("path", f.absolutePath)
+                    .put("folder", f.parent ?: "")
+                    .put("size", f.length())
+                    .put("modified", f.lastModified())
+                    .put("readable", f.canRead())
+                    .put("writable", f.canWrite())
+                    .put("insideWorkspace", f.canonicalPath.startsWith(workspaceDir.canonicalPath))
+            }
+
             "deleteFile" -> {
                 val f = resolveWorkspaceFile(args.getString("path"))
                 val ok = f.exists() && f.delete()
@@ -392,8 +465,16 @@ class AndroidBridge(private val activity: MainActivity) {
             }
 
             "shareFile" -> {
-                val f = resolveWorkspaceFile(args.getString("path"))
-                require(f.isFile) { "File not found: ${f.name}" }
+                val resolved = resolveWorkspaceFile(args.getString("path"))
+                require(resolved.isFile) { "File not found: ${resolved.name}" }
+                val f = if (resolved.canonicalPath.startsWith(workspaceDir.canonicalPath)) {
+                    resolved
+                } else {
+                    val stage = File(File(activity.cacheDir, "share"), resolved.name)
+                    stage.parentFile?.mkdirs()
+                    runCatching { resolved.copyTo(stage, overwrite = true) }.getOrElse { resolved }
+                    stage
+                }
                 activity.runOnUiThread {
                     val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", f)
                     val intent = Intent(Intent.ACTION_SEND).apply {
@@ -714,13 +795,14 @@ class AndroidBridge(private val activity: MainActivity) {
         val f = resolveWorkspaceFile(args.getString("path"))
         require(f.isFile) { "Document not found: ${f.path}" }
         val ext = f.extension.lowercase()
-        val rel = if (f.canonicalPath.startsWith(workspaceDir.canonicalPath)) {
+        val insideWorkspace = f.canonicalPath.startsWith(workspaceDir.canonicalPath)
+        val rel = if (insideWorkspace) {
             f.canonicalFile.relativeTo(workspaceDir.canonicalFile).invariantSeparatorsPath
         } else {
             f.name
         }
 
-        return when (ext) {
+        val opened = when (ext) {
             "docx" -> OoxmlEngine.readDocx(f.readBytes())
                 .put("ok", true).put("name", f.name).put("rel", rel).put("ext", ext)
 
@@ -783,14 +865,39 @@ class AndroidBridge(private val activity: MainActivity) {
                     .put("html", text.split('\n').joinToString("") { "<p>${it.replace("&", "&amp;").replace("<", "&lt;")}</p>" })
             }
         }
+        // A file opened straight from the phone keeps its own path: saving writes back
+        // there (in place) instead of silently forking a copy inside the workspace.
+        return opened
+            .put("abs", f.absolutePath)
+            .put("external", !insideWorkspace)
+            .put("folder", if (insideWorkspace) "" else (f.parentFile?.name ?: ""))
     }
 
     private fun saveDocumentNative(args: JSONObject): JSONObject {
         val rel = args.getString("rel").replace('\\', '/').trimStart('/')
-        val target = File(workspaceDir, rel)
+        val absArg = args.optString("abs", "").trim()
+        val external = absArg.isNotEmpty() && File(absArg).let { it.isAbsolute && it.isFile } &&
+            !File(absArg).canonicalPath.startsWith(workspaceDir.canonicalPath)
+        val target = if (external) File(absArg) else File(workspaceDir, rel)
         target.parentFile?.mkdirs()
         if (target.isFile) saveVersionSnapshot(target)
 
+        if (external && !target.canWrite()) {
+            // No write access to that folder (SD card, another app's directory): keep the
+            // work instead of failing, and say so plainly in the returned document.
+            val copy = uniqueWorkspaceName(target.name)
+            val written = writeDocumentBytes(args, copy)
+            return written
+                .put("savedCopy", copy.name)
+                .put("abs", copy.absolutePath)
+                .put("external", false)
+                .put("warning", "Saved a copy in MyOffice — ${target.parentFile?.name ?: "this folder"} is read-only")
+        }
+        return writeDocumentBytes(args, target, external)
+    }
+
+    private fun writeDocumentBytes(args: JSONObject, target: File, external: Boolean = false): JSONObject {
+        target.parentFile?.mkdirs()
         val kind = args.getString("kind")
         val ext = target.extension.lowercase()
         when (kind) {
@@ -825,9 +932,12 @@ class AndroidBridge(private val activity: MainActivity) {
             }
             else -> throw IllegalArgumentException("Unsupported document save kind: $kind")
         }
+        val insideWorkspace = target.canonicalPath.startsWith(workspaceDir.canonicalPath)
         return JSONObject()
             .put("ok", true)
-            .put("rel", target.relativeTo(workspaceDir).invariantSeparatorsPath)
+            .put("rel", if (insideWorkspace) target.relativeTo(workspaceDir).invariantSeparatorsPath else target.name)
+            .put("abs", target.absolutePath)
+            .put("external", external && !insideWorkspace)
             .put("size", target.length())
             .put("mtime", target.lastModified())
     }
