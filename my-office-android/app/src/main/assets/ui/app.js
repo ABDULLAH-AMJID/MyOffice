@@ -479,6 +479,9 @@
     if (subEl) {
       if (state.activeTab === "sync") {
         subEl.textContent = `${state.deviceInfo.name} · ${state.deviceInfo.ip}`;
+      } else if (state.activeTab === "home") {
+        // the header counts what the Home screen actually shows: workspace + phone
+        subEl.textContent = pack.docsCount(allDocuments().length);
       } else {
         subEl.textContent = pack.docsCount(state.files.length);
       }
@@ -581,6 +584,7 @@
     state.deviceLoading = false;
     renderDeviceAccessCard();
     renderFiles();
+    updateHeaderTitle();
   }
 
   async function checkDeviceAccess() {
@@ -757,9 +761,11 @@
     listEl.innerHTML = visible.map((f) => {
       const spec = formatSpec(f.type, f.ext);
       const displayTitle = stripKnownExt(f.name) || f.name;
-      const folderPrefix = f.folder ? f.folder + " · " : "";
-      const sourceChip = f.source === "device" ? ` <span class="file-source">${esc(f.folder || "Phone")}</span>` : "";
-      const metaLine = `${folderPrefix}${(f.ext || "FILE").toUpperCase()} · ${fmtSize(f.size)} · ${fmtDateShort(f.mtime)}`;
+      const folderLabel = f.source === "device"
+        ? (f.folder || "")
+        : (String(f.rel).includes("/") ? String(f.rel).slice(0, String(f.rel).lastIndexOf("/")) : "");
+      const sourceChip = folderLabel ? ` <span class="file-source">${esc(folderLabel)}</span>` : "";
+      const metaLine = `${(f.ext || "FILE").toUpperCase()} · ${fmtSize(f.size)} · ${fmtDateShort(f.mtime)}`;
       const key = esc(f.rel).replace(/'/g, "&#39;");
       return `
         <div class="file-row" data-rel="${esc(f.rel)}" data-source="${f.source}" onclick="App.openFile('${key}')">
