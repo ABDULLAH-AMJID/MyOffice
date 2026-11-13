@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.6",
   "version_code": 10606,
-  "date": "2026-11-13T21:01:50Z",
+  "date": "2026-11-13T22:54:53Z",
   "notes": "Windows 1.6.6 — Presentation Scripts (MyOffice Script): Python automation for decks with Alt+F8 — object model (slides, shapes, text, tables, charts, animations, themes), Run/Stop editor, one undo entry per run with full rollback on error, .moscript sidecar next to the deck, .mopkg packaged export, trust approvals per file content, permission-gated file reads, five shipped examples. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -10,16 +10,16 @@
   "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
   "size": 122046531,
   "android": {
-    "version": "1.7.0",
-    "version_code": 10700,
-    "min_native_code": 10700,
+    "version": "1.7.1",
+    "version_code": 10701,
+    "min_native_code": 10701,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
-    "bundle_sha256": "07f756cd8b07fcccad59b0b8c84dcd7299772b32f1df7d0955d212fc4fc4fec0",
-    "bundle_size": 58294,
+    "bundle_sha256": "ec62df042b9de683b993f3a40380e50096b6bb4861cb07b4e623016d6e71a9e3",
+    "bundle_size": 59522,
     "bundle_files": 5,
     "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.6/MyOffice_Android.apk",
-    "apk_sha256": "4136a0d17e3be81ea7a2f4180e6c0bdfaa811e50fc370609870d82adb2f84819",
-    "apk_size": 7036069
+    "apk_sha256": "3417eb1d0fc8ae40aaadfb4229fef3c980efeb5a5c6e6df4ca1fcb1255e6af1b",
+    "apk_size": 7053678
   },
   "windows": {
     "version": "1.6.6",
@@ -32,5 +32,5 @@
     "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
     "installer_size": 122046531
   },
-  "signature": "MEQCIDhiKA5qmXB659p0APopn1lalrdB8p6VldyLbjsrMgwjAiBiQbPoXO2wJp2J7mIpZNWlrJB4LUme6iBgKFBmkx+G4Q=="
+  "signature": "MEYCIQCTWR3wBBOPFe77yd4thqOJaNUx7zQf5M95vma91mlXFAIhAPV8bU+LcLOmEfFE6iCPa2rc79D0xdkwlxlQ+7T3iXzc"
 }

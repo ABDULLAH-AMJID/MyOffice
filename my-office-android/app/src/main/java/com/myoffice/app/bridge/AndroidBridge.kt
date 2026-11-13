@@ -35,6 +35,9 @@ import com.myoffice.app.sync.VaultEncryptedBackend
 import com.myoffice.app.update.OtaUpdateManager
 import com.myoffice.app.library.DeviceFile
 import com.myoffice.app.library.DeviceLibrary
+import com.myoffice.app.library.LibraryIndex
+import com.myoffice.app.library.LibraryIndexer
+import com.myoffice.app.library.LibrarySearch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -161,6 +164,50 @@ class AndroidBridge(private val activity: MainActivity) {
                 .setProgress(100, pct, phase == "checking" || phase == "connecting")
             nm.notify(7701, builder.build())
         }
+    }
+
+    /**
+     * The phone's documents, served from the index. The first call after a fresh install
+     * scans synchronously (it is already off the UI thread); later calls answer instantly and
+     * refresh in the background when the cache has aged out.
+     */
+    private fun deviceFilesPayload(refresh: Boolean, limit: Int): JSONObject {
+        val index = LibraryIndexer.index(activity)
+        var files = index.allFiles()
+        if (files.isEmpty()) {
+            // Nothing indexed yet: this call carries the first paint, so scan right here
+            // (already on a worker thread) instead of returning an empty screen.
+            val scanned = runCatching { DeviceLibrary.scan(activity, workspaceDir) }.getOrDefault(emptyList())
+            index.replaceAll(scanned, System.currentTimeMillis())
+            LibraryIndexer.markScannedNow(activity)
+            files = index.allFiles()
+        } else {
+            // Answer from the index immediately; refresh in the background when it is stale.
+            LibraryIndexer.ensureScanned(activity, workspaceDir, force = refresh) { }
+        }
+        if (DeviceLibrary.hasAllFilesAccess(activity)) {
+            LibraryIndexer.kickIndexing(activity, indexProgressListener())
+        }
+        val count = index.counts()
+        val sliced = if (files.size > limit) files.take(limit) else files
+        return JSONObject()
+            .put("ok", true)
+            .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
+            .put("scannedAt", LibraryIndexer.scannedAt(activity))
+            .put("fromCache", true)
+            .put("total", files.size)
+            .put("truncated", files.size > limit)
+            .put("indexed", count.indexed)
+            .put("indexPending", count.pending)
+            .put("files", DeviceLibrary.toJson(sliced))
+    }
+
+    /** Push indexing progress to the WebView at a rate a human can follow, not per document. */
+    private fun indexProgressListener(): (Int, Int, Int) -> Unit = { indexed, total, pending ->
+        activity.pushJsEvent(
+            "window.__onIndexProgress",
+            JSONObject().put("ok", true).put("indexed", indexed).put("total", total).put("pending", pending).toString()
+        )
     }
 
     private fun uniqueWorkspaceName(name: String): File {
@@ -400,18 +447,64 @@ class AndroidBridge(private val activity: MainActivity) {
                     .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
             }
 
-            "listDeviceFiles" -> {
-                val refresh = args.optBoolean("refresh", false)
-                val limit = args.optInt("limit", 3000)
-                val (files, scannedAt, fromCache) = DeviceLibrary.listCached(activity, refresh, workspaceDir)
+            "listDeviceFiles" -> deviceFilesPayload(args.optBoolean("refresh", false), args.optInt("limit", 3000))
+
+            // Full-text search across the phone: names, folders and the text inside documents.
+            "searchDocuments" -> {
+                val query = args.optString("query", "").trim()
+                val limit = args.optInt("limit", 40).coerceIn(1, 200)
+                val tokens = LibrarySearch.tokenize(query)
+                val index = LibraryIndexer.index(activity)
+                val nameHits = if (query.isEmpty()) emptyList() else index.searchNames(query, limit)
+                val bodyHits = if (tokens.isEmpty()) emptyList() else index.searchContent(tokens, limit)
+                val count = index.counts()
+
+                val nameJson = JSONArray()
+                nameHits.forEach { file ->
+                    nameJson.put(
+                        JSONObject()
+                            .put("path", file.path).put("name", file.name).put("ext", file.ext)
+                            .put("kind", file.kind).put("size", file.size).put("modified", file.modified)
+                            .put("folder", file.folder).put("source", "device").put("where", "name")
+                    )
+                }
+                val contentJson = JSONArray()
+                bodyHits.forEach { hit ->
+                    contentJson.put(
+                        JSONObject()
+                            .put("path", hit.path).put("name", hit.name).put("ext", hit.ext)
+                            .put("kind", hit.kind).put("size", hit.size).put("modified", hit.modified)
+                            .put("folder", hit.folder).put("source", "device").put("where", "content")
+                            .put("snippet", LibrarySearch.snippet(hit.body, tokens))
+                    )
+                }
                 JSONObject()
                     .put("ok", true)
-                    .put("granted", DeviceLibrary.hasAllFilesAccess(activity))
-                    .put("scannedAt", scannedAt)
-                    .put("fromCache", fromCache)
-                    .put("total", files.size)
-                    .put("truncated", files.size > limit)
-                    .put("files", DeviceLibrary.toJson(if (files.size > limit) files.take(limit) else files))
+                    .put("query", query)
+                    .put("names", nameJson)
+                    .put("content", contentJson)
+                    .put("indexing", JSONObject()
+                        .put("running", LibraryIndexer.isIndexing())
+                        .put("indexed", count.indexed)
+                        .put("total", count.total)
+                        .put("pending", count.pending))
+            }
+
+            "indexStatus" -> {
+                val count = LibraryIndexer.index(activity).counts()
+                JSONObject()
+                    .put("ok", true)
+                    .put("total", count.total)
+                    .put("indexed", count.indexed)
+                    .put("pending", count.pending)
+                    .put("running", LibraryIndexer.isIndexing())
+                    .put("scannedAt", LibraryIndexer.scannedAt(activity))
+            }
+
+            "reindexText" -> {
+                LibraryIndexer.resetTextIndex(activity)
+                LibraryIndexer.kickIndexing(activity, indexProgressListener())
+                JSONObject().put("ok", true)
             }
 
             "copyToWorkspace" -> {

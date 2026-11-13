@@ -56,6 +56,29 @@ DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
 
 ---
 
+## What is new in `v1.7.1` — search *inside* the documents, not just their names (Android)
+
+**The gap after 1.7.0:** the phone's files were listed, but finding one still meant remembering its *name*.
+A file manager can do that. **v1.7.1 reads the documents and lets you search their contents.**
+
+* **SQLite index on the device** (`library-index.db`): the file list and the extracted text, so the Home screen
+  opens from a table instead of re-walking storage. A stale index is refreshed in the background; rows that
+  disappeared from the phone are dropped in the same pass.
+* **Full-text search with FTS4** (`unicode61`, so Urdu/Arabic and accents work): type `salary` and MyOffice shows
+  the documents whose **body** contains it, under a *Found inside documents* heading, each with the matching line.
+  Name and folder matches still come first — the section only holds what a filename search would have missed.
+* **What gets indexed:** DOCX/PPTX slide text, XLSX shared strings + cell values, CSV/TSV/TXT/MD/HTML, and PDF text
+  via the bundled PDF engine (first 30 pages of each). Nothing is uploaded — the index never leaves the phone.
+* **Bounded by design:** 25 MB source cap, 32,000 characters per document, one low-priority thread, progress shown
+  as *Reading documents 5/9* in the search bar, and *Rebuild search index* available from the library.
+* Documents that cannot carry text (images, vaults, archives) are retired from the queue once instead of being
+  re-examined forever, so indexing always finishes.
+
+Windows is unchanged (still `v1.6.6`); the OTA descriptor now pins Android to `1.7.1` / `10701` —
+`min_native_code 10701` because the 1.7.1 UI calls native actions that older builds do not have.
+
+---
+
 ## What is new in `v1.7.0` — your phone's own documents, already in the app (Android)
 
 **The complaint:** opening a document began with *importing* it through the system picker — a detour through

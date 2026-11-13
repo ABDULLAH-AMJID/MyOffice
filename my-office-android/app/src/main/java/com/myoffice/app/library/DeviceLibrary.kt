@@ -28,8 +28,6 @@ import java.io.File
  */
 object DeviceLibrary {
 
-    private const val CACHE_FILE = "device-index.json"
-    private const val CACHE_TTL_MS = 10 * 60 * 1000L
     private const val MAX_ENTRIES = 20_000
     private const val MAX_DEPTH = 12
 
@@ -172,66 +170,6 @@ object DeviceLibrary {
                 }
             }
         }
-    }
-
-    // ---------------------------------------------------------------- cache
-
-    private fun cacheFile(context: Context) = File(context.filesDir, CACHE_FILE)
-
-    fun loadCache(context: Context): Pair<List<DeviceFile>, Long>? {
-        val f = cacheFile(context)
-        if (!f.isFile) return null
-        return runCatching {
-            val obj = JSONObject(f.readText())
-            val scannedAt = obj.optLong("scannedAt", 0L)
-            val arr = obj.optJSONArray("files") ?: JSONArray()
-            val list = ArrayList<DeviceFile>(arr.length())
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                list += DeviceFile(
-                    path = o.getString("path"),
-                    name = o.getString("name"),
-                    ext = o.optString("ext"),
-                    kind = o.optString("kind"),
-                    size = o.optLong("size"),
-                    modified = o.optLong("modified"),
-                    folder = o.optString("folder"),
-                )
-            }
-            list to scannedAt
-        }.getOrNull()
-    }
-
-    fun saveCache(context: Context, files: List<DeviceFile>, scannedAt: Long) {
-        runCatching {
-            val arr = JSONArray()
-            files.forEach { d ->
-                arr.put(
-                    JSONObject()
-                        .put("path", d.path).put("name", d.name).put("ext", d.ext)
-                        .put("kind", d.kind).put("size", d.size).put("modified", d.modified)
-                        .put("folder", d.folder)
-                )
-            }
-            JSONObject().put("scannedAt", scannedAt).put("files", arr)
-                .toString().let { cacheFile(context).writeText(it) }
-        }
-    }
-
-    /**
-     * Cached scan.  [refresh] forces a re-walk; otherwise the cache is served when it
-     * is younger than [CACHE_TTL_MS].  Returns (files, scannedAt, fromCache).
-     */
-    fun listCached(context: Context, refresh: Boolean, workspaceDir: File? = null): Triple<List<DeviceFile>, Long, Boolean> {
-        val cached = loadCache(context)
-        if (!refresh && cached != null) {
-            val age = System.currentTimeMillis() - cached.second
-            if (age in 0..CACHE_TTL_MS) return Triple(cached.first, cached.second, true)
-        }
-        val files = scan(context, workspaceDir)
-        val now = System.currentTimeMillis()
-        saveCache(context, files, now)
-        return Triple(files, now, false)
     }
 
     fun toJson(files: List<DeviceFile>): JSONArray {

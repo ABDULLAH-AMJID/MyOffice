@@ -111,6 +111,9 @@
       prefTheme: "Appearance",
       themeLight: "Paper Light",
       themeDark: "Carbon Dark",
+      indexingDocs: "Reading documents",
+      foundInside: "Found inside documents",
+      reindexText: "Rebuild search index",
       scopeAll: "All files",
       scopeMine: "MyOffice",
       libSort: "Sort",
@@ -216,6 +219,9 @@
       prefTheme: "تھیم",
       themeLight: "روشن کاغذ",
       themeDark: "ڈارک موڈ",
+      indexingDocs: "دستاویزات پڑھی جا رہی ہیں",
+      foundInside: "دستاویزات کے اندر ملا",
+      reindexText: "سرچ انڈیکس دوبارہ بنائیں",
       scopeAll: "تمام فائلیں",
       scopeMine: "مائی آفس",
       libSort: "ترتیب",
@@ -321,6 +327,9 @@
       prefTheme: "दिखावट",
       themeLight: "पेपर लाइट",
       themeDark: "कार्बन डार्क",
+      indexingDocs: "दस्तावेज़ पढ़े जा रहे हैं",
+      foundInside: "दस्तावेज़ों के अंदर मिला",
+      reindexText: "खोज सूचकांक फिर बनाएँ",
       scopeAll: "सभी फ़ाइलें",
       scopeMine: "MyOffice",
       libSort: "क्रम",
@@ -387,6 +396,10 @@
     deviceLoading: false,
     renderLimit: 200,
     renderKey: "",
+    textHits: [],
+    indexInfo: { indexed: 0, total: 0, pending: 0, running: false },
+    searchSeq: 0,
+    searchTimer: null,
     sortMode: localStorage.getItem(DEVICE_SORT_KEY) || "newest",
     lastUsed: readJson(LAST_USED_KEY, {}),
     files: [],
@@ -725,6 +738,47 @@
     }
   }
 
+  /** Snippet markers / become <mark> — only after the text has been escaped. */
+  function renderSnippet(raw) {
+    return esc(raw)
+      .split("\u0001").join("<mark>")
+      .split("\u0002").join("</mark>");
+  }
+
+  /** Ask the native index what is inside the documents, not just in their names. */
+  function scheduleContentSearch(query) {
+    clearTimeout(state.searchTimer);
+    if (!query || query.length < 2) {
+      state.textHits = [];
+      state.searchSeq++;
+      return;
+    }
+    const seq = ++state.searchSeq;
+    state.searchTimer = setTimeout(async () => {
+      try {
+        const res = await nativeCall("searchDocuments", { query, limit: 40 });
+        if (seq !== state.searchSeq) return;          // a newer keystroke won
+        state.textHits = res.content || [];
+        state.indexInfo = res.indexing || state.indexInfo;
+        renderFiles();
+      } catch (_) {
+        if (seq === state.searchSeq) { state.textHits = []; renderFiles(); }
+      }
+    }, 260);
+  }
+
+  function renderIndexChip() {
+    const el = document.getElementById("indexChip");
+    if (!el) return;
+    const info = state.indexInfo || {};
+    if (info.running && info.pending > 0) {
+      el.classList.remove("hidden");
+      el.textContent = `${tr("indexingDocs")} ${info.indexed}/${info.total}`;
+    } else {
+      el.classList.add("hidden");
+    }
+  }
+
   function renderFiles() {
     const q = (document.getElementById("searchInput")?.value || "").trim().toLowerCase();
     const listEl = document.getElementById("fileList");
@@ -746,7 +800,7 @@
     }
     const visible = filtered.slice(0, state.renderLimit);
 
-    if (!filtered.length) {
+    if (!filtered.length && !state.textHits.length) {
       listEl.innerHTML = `
         <div class="empty-state">
           ${svgIcon("folder", "ico ico-lg")}
@@ -757,6 +811,33 @@
       `;
       return;
     }
+
+    // Documents found *inside* — the part a plain file manager cannot do.
+    const shown = new Set(visible.map((f) => String(f.rel)));
+    const hits = q.length >= 2
+      ? state.textHits.filter((h) => !shown.has(String(h.path)))
+      : [];
+    const hitsHtml = hits.length ? `
+      <div class="section-label">${esc(tr("foundInside"))} · ${hits.length}</div>
+      ${hits.map((h) => {
+        const spec = formatSpec(h.kind, h.ext);
+        const key = esc(h.path).replace(/'/g, "&#39;");
+        return `
+          <div class="file-row" data-rel="${esc(h.path)}" data-source="device" onclick="App.openFile('${key}')">
+            <div class="file-badge" style="color:${spec.fg};background:${spec.bg}">${esc(spec.label)}</div>
+            <div class="file-body">
+              <div class="file-title">
+                <span>${esc(stripKnownExt(h.name) || h.name)}</span>
+                ${h.folder ? ` <span class="file-source">${esc(h.folder)}</span>` : ""}
+              </div>
+              <div class="file-snippet">${renderSnippet(h.snippet)}</div>
+            </div>
+            <button class="row-more-btn" onclick="event.stopPropagation();App.openFileMenu('${key}')" aria-label="Document options">
+              ${svgIcon("more")}
+            </button>
+          </div>`;
+      }).join("")}
+    ` : "";
 
     listEl.innerHTML = visible.map((f) => {
       const spec = formatSpec(f.type, f.ext);
@@ -782,7 +863,8 @@
           </button>
         </div>
       `;
-    }).join("");
+    }).join("") + hitsHtml;
+    renderIndexChip();
 
     // Attach natural Android 480ms long-press gesture on file rows
     if (filtered.length > visible.length) {
@@ -1467,6 +1549,18 @@
   }
 
   // ==================== NATIVE CALLBACKS ====================
+  window.__onIndexProgress = function (raw) {
+    let payload = raw;
+    if (typeof raw === "string") { try { payload = JSON.parse(raw); } catch (_) { payload = {}; } }
+    state.indexInfo = {
+      indexed: payload.indexed || 0,
+      total: payload.total || 0,
+      pending: payload.pending || 0,
+      running: (payload.pending || 0) > 0
+    };
+    renderIndexChip();
+  };
+
   window.__onDeviceAccessChanged = function (raw) {
     let payload = raw;
     if (typeof raw === "string") { try { payload = JSON.parse(raw); } catch (_) { payload = {}; } }
@@ -1834,12 +1928,23 @@
       const val = document.getElementById("searchInput").value;
       document.getElementById("btnSearchClear").classList.toggle("hidden", !val);
       renderFiles();
+      scheduleContentSearch(val.trim());
     },
 
     clearSearch() {
       document.getElementById("searchInput").value = "";
       document.getElementById("btnSearchClear").classList.add("hidden");
+      clearTimeout(state.searchTimer);
+      state.textHits = [];
+      state.searchSeq++;
       renderFiles();
+    },
+
+    reindexText() {
+      nativeCall("reindexText").then(() => {
+        toast(tr("indexingDocs"));
+        refreshDeviceFiles(true);
+      }).catch((e) => toast(e.message));
     },
 
     setFilter(f, chipEl) {

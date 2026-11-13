@@ -30,6 +30,17 @@ DEVICE_FILES = [
      "kind": "photos", "size": 2_400_000, "modified": NOW - 400_000_000, "folder": "DCIM/Camera", "source": "device"},
 ]
 
+CONTENT_HITS = [
+    {"path": "/storage/emulated/0/Download/Salary Slip Aug.pdf", "name": "Salary Slip Aug.pdf",
+     "ext": "pdf", "kind": "pdf", "size": 184_320, "modified": NOW - 3600_000, "folder": "Download",
+     "source": "device", "where": "content",
+     "snippet": "…basic \u0001salary\u0002 145,000 and <allowances> paid on 01 August 2026…"},
+    {"path": "/storage/emulated/0/Documents/Letter to Bank.docx", "name": "Letter to Bank.docx",
+     "ext": "docx", "kind": "writer", "size": 44_100, "modified": NOW - 172_800_000, "folder": "Documents",
+     "source": "device", "where": "content",
+     "snippet": "…requesting the bank to release the \u0001salary\u0002 transfer for <August>…"},
+]
+
 WORKSPACE_FILES = [
     {"name": "Weekly Report.docx", "rel": "Weekly Report.docx", "ext": "docx", "type": "writer",
      "size": 12_800, "mtime": NOW - 7200_000, "starred": True},
@@ -62,13 +73,16 @@ def run(granted: bool) -> None:
                   listDeviceFiles: { ok: true, granted: %s, scannedAt: %d, fromCache: false, total: %d,
                                      truncated: false, files: %s },
                   requestDeviceAccess: { ok: true, launched: true, granted: false },
+                  searchDocuments: { ok: true, query: "", names: [], content: %s,
+                                     indexing: { running: true, indexed: 5, total: 9, pending: 4 } },
                   saveSettings: { ok: true }
                 }[action] || { ok: true };
                 setTimeout(() => window.__resolveNativeCall && window.__resolveNativeCall(reqId, JSON.stringify(payload)), 0);
               }
             };
             """ % (json.dumps(BOOTSTRAP), json.dumps(WORKSPACE_FILES), str(granted).lower(),
-                   str(granted).lower(), NOW, len(DEVICE_FILES), json.dumps(DEVICE_FILES))
+                   str(granted).lower(), NOW, len(DEVICE_FILES), json.dumps(DEVICE_FILES),
+                   json.dumps(CONTENT_HITS))
         )
         page.goto((UI / "index.html").as_uri())
         page.wait_for_timeout(900)
@@ -88,6 +102,12 @@ def run(granted: bool) -> None:
         page.wait_for_timeout(300)
         print("  pdf filter rows ->", page.locator("#fileList .file-row").count())
         page.click(".filter-tab[data-filter='all']")
+        if granted:
+            page.fill("#searchInput", "salary")
+            page.wait_for_timeout(700)
+            page.screenshot(path=str(OUT / "search-inside.png"))
+            print("  inside-document hits ->", page.locator(".file-snippet").count())
+
         page.click(".lib-scope-btn[data-scope='myoffice']")
         page.wait_for_timeout(300)
         print("  myoffice scope rows ->", page.locator("#fileList .file-row").count())
