@@ -94,6 +94,26 @@ object LibrarySorting {
     }
 }
 
+/**
+ * Folders the library walks past. `Android/data` and `Android/obb` hold other apps'
+ * private trees and are unreadable anyway, but `Android/media` must stay reachable —
+ * that is where WhatsApp keeps the documents people actually open.
+ */
+object LibraryPaths {
+
+    private val SKIP_LEAVES = setOf(
+        "lost.dir", ".thumbnails", ".trashes", ".trash", "cache", "temp", "tmp", "\$recycle.bin"
+    )
+
+    fun isSkippedDir(relPath: String): Boolean {
+        val p = relPath.replace('\\', '/').trim('/').lowercase()
+        if (p.isEmpty()) return false
+        if (p == "android/data" || p.startsWith("android/data/")) return true
+        if (p == "android/obb" || p.startsWith("android/obb/")) return true
+        return p.substringAfterLast('/') in SKIP_LEAVES
+    }
+}
+
 /** Extension → the same document families the editors use. */
 object DocumentKinds {
 

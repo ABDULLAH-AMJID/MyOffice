@@ -136,6 +136,31 @@ class DeviceLibraryTest {
     }
 
     @Test
+    fun `WhatsApp documents under Android media are reachable`() {
+        assertFalse(LibraryPaths.isSkippedDir("Android"))
+        assertFalse(LibraryPaths.isSkippedDir("Android/media"))
+        assertFalse(LibraryPaths.isSkippedDir("Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents"))
+    }
+
+    @Test
+    fun `other apps private trees stay out of the walk`() {
+        assertTrue(LibraryPaths.isSkippedDir("Android/data"))
+        assertTrue(LibraryPaths.isSkippedDir("Android/data/com.example/files"))
+        assertTrue(LibraryPaths.isSkippedDir("Android/obb"))
+        assertTrue(LibraryPaths.isSkippedDir("DCIM/.thumbnails"))
+        assertTrue(LibraryPaths.isSkippedDir("LOST.DIR"))
+        assertTrue(LibraryPaths.isSkippedDir("Download/cache"))
+    }
+
+    @Test
+    fun `ordinary folders are walked`() {
+        assertFalse(LibraryPaths.isSkippedDir("Download"))
+        assertFalse(LibraryPaths.isSkippedDir("Download/Receipts 2026"))
+        assertFalse(LibraryPaths.isSkippedDir("DCIM/Camera"))
+        assertFalse(LibraryPaths.isSkippedDir(""))
+    }
+
+    @Test
     fun `sort keys are validated against the supported set`() {
         assertEquals(LibrarySorting.NEWEST, LibrarySorting.normalise("nonsense"))
         assertEquals(LibrarySorting.NEWEST, LibrarySorting.normalise(null))

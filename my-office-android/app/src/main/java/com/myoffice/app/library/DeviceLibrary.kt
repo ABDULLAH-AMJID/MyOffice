@@ -33,11 +33,6 @@ object DeviceLibrary {
     private const val MAX_ENTRIES = 20_000
     private const val MAX_DEPTH = 12
 
-    private val SKIP_DIRS = setOf(
-        "android", "android/data", "android/obb", "lost.dir", ".thumbnails", ".trashed",
-        "\$recycle.bin", ".trash", "cache", "temp", "tmp"
-    )
-
     // ---------------------------------------------------------------- access
 
     /** True when MyOffice may read the whole shared storage. */
@@ -94,24 +89,31 @@ object DeviceLibrary {
         if (hasAllFilesAccess(context)) {
             val workspaceRoot = runCatching { workspaceDir?.canonicalPath }.getOrNull()
             for (root in roots(context)) {
-                walk(root, root, 0, found, workspaceRoot)
+                walk(root, root, "", 0, found, workspaceRoot)
             }
         }
         runCatching { scanMediaStore(context, found) }
         return found.values.toList()
     }
 
-    private fun walk(dir: File, root: File, depth: Int, out: MutableMap<String, DeviceFile>, workspaceRoot: String?) {
+    private fun walk(
+        dir: File,
+        root: File,
+        relPrefix: String,
+        depth: Int,
+        out: MutableMap<String, DeviceFile>,
+        workspaceRoot: String?,
+    ) {
         if (depth > MAX_DEPTH || out.size >= MAX_ENTRIES) return
         val children = runCatching { dir.listFiles() }.getOrNull() ?: return
         for (f in children) {
             if (out.size >= MAX_ENTRIES) return
             val name = f.name
             if (name.startsWith(".")) continue
+            val rel = if (relPrefix.isEmpty()) name else "$relPrefix/$name"
             if (f.isDirectory) {
-                if (name.lowercase() in SKIP_DIRS) continue
-                // A card's Android/ tree is unreadable anyway; keep the walk bounded.
-                walk(f, root, depth + 1, out, workspaceRoot)
+                if (LibraryPaths.isSkippedDir(rel)) continue
+                walk(f, root, rel, depth + 1, out, workspaceRoot)
             } else if (f.isFile) {
                 if (!DocumentKinds.isSupported(name)) continue
                 val canonical = runCatching { f.canonicalPath }.getOrDefault(f.absolutePath)
