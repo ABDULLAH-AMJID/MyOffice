@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.6",
   "version_code": 10606,
-  "date": "2026-11-13T19:41:46Z",
+  "date": "2026-11-13T19:42:21Z",
   "notes": "Windows 1.6.6 — Presentation Scripts (MyOffice Script): Python automation for decks with Alt+F8 — object model (slides, shapes, text, tables, charts, animations, themes), Run/Stop editor, one undo entry per run with full rollback on error, .moscript sidecar next to the deck, .mopkg packaged export, trust approvals per file content, permission-gated file reads, five shipped examples. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -12,7 +12,7 @@
   "android": {
     "version": "1.7.0",
     "version_code": 10700,
-    "min_native_code": 10600,
+    "min_native_code": 10700,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
     "bundle_sha256": "07f756cd8b07fcccad59b0b8c84dcd7299772b32f1df7d0955d212fc4fc4fec0",
     "bundle_size": 58294,
@@ -32,5 +32,5 @@
     "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
     "installer_size": 122046531
   },
-  "signature": "MEQCIEgC3Q1OPY3DLQs5ZJ7imQt+GbNeSaI2tdTXlnEM6Q2lAiBJbTA9uwTOWvhcEyIFZcgj16pSOjRQ8H3t4BVkuwXKgg=="
+  "signature": "MEUCIQCNSbDnCYkyaTN4yuRkVPvk17dZIW9jU7cI2WCck14L7gIgcFmi8BEDfM7wehYFJZjQNU4negiiZ9wwnj5ZM8AucWQ="
 }
