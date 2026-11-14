@@ -111,6 +111,7 @@
       prefTheme: "Appearance",
       themeLight: "Paper Light",
       themeDark: "Carbon Dark",
+      indexFailures: "Could not read",
       readingScans: "Reading scans",
       continueTitle: "Continue where you left off",
       indexingDocs: "Reading documents",
@@ -221,6 +222,7 @@
       prefTheme: "تھیم",
       themeLight: "روشن کاغذ",
       themeDark: "ڈارک موڈ",
+      indexFailures: "نہیں پڑھ سکے",
       readingScans: "اسکین پڑھے جا رہے ہیں",
       continueTitle: "جہاں چھوڑا تھا وہیں سے جاری رکھیں",
       indexingDocs: "دستاویزات پڑھی جا رہی ہیں",
@@ -331,6 +333,7 @@
       prefTheme: "दिखावट",
       themeLight: "पेपर लाइट",
       themeDark: "कार्बन डार्क",
+      indexFailures: "नहीं पढ़ सके",
       readingScans: "स्कैन पढ़े जा रहे हैं",
       continueTitle: "जहाँ छोड़ा था वहीं से जारी रखें",
       indexingDocs: "दस्तावेज़ पढ़े जा रहे हैं",
@@ -601,6 +604,17 @@
       state.deviceFiles = res.files || [];
       state.deviceGranted = Boolean(res.granted);
       state.deviceScannedAt = res.scannedAt || Date.now();
+      const called = (res.files || []).length;
+      const pendingCount = res.indexPending || 0;
+      state.indexInfo = Object.assign({}, state.indexInfo, {
+        total: res.total || called,
+        indexed: res.indexed || 0,
+        pending: pendingCount,
+        skipped: res.indexSkipped || 0,
+        failed: res.indexFailed || 0,
+        processed: Math.max(0, (res.total || called) - pendingCount),
+        running: pendingCount > 0
+      });
     } catch (_) {
       state.deviceFiles = [];
     }
@@ -879,12 +893,21 @@
     const info = state.indexInfo || {};
     if (info.running && info.pending > 0) {
       el.classList.remove("hidden");
-      // While the cheap text pass is done and scans remain, the label says so — reading a
-      // photograph takes seconds, and a silent pause looks like a hang.
+      // While the text pass is done and scans remain, the label says so — reading a photograph
+      // takes seconds, and a silent pause looks like a hang.
       const label = (info.needsOcr > 0 && info.ocrAvailable) ? tr("readingScans") : tr("indexingDocs");
-      el.textContent = `${label} ${info.indexed}/${info.total}`;
+      // "processed" also counts files that were skipped (no text) or failed, so the counter
+      // actually walks up to the total instead of freezing on documents that will never add text.
+      const done = info.processed != null ? info.processed : (info.indexed || 0);
+      el.textContent = `${label} ${done}/${info.total}`;
     } else {
       el.classList.add("hidden");
+    }
+    const note = document.getElementById("indexErrorNote");
+    if (note) {
+      const failed = info.failed || 0;
+      note.classList.toggle("hidden", failed <= 0);
+      if (failed > 0) note.textContent = `${tr("indexFailures")}: ${failed}`;
     }
   }
 
@@ -1673,6 +1696,9 @@
       indexed: payload.indexed || 0,
       total: payload.total || 0,
       pending: payload.pending || 0,
+      skipped: payload.skipped || 0,
+      failed: payload.failed || 0,
+      processed: payload.processed != null ? payload.processed : (payload.indexed || 0),
       running: (payload.pending || 0) > 0
     });
     renderIndexChip();

@@ -50,6 +50,19 @@ object TextClean {
             .trim()
     }
 
+    private val CONTROL = Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]")
+    private val LONE_SURROGATE = Regex("[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]")
+
+    /**
+     * Text that came out of a PDF or a zip can contain control bytes and broken surrogate
+     * pairs. SQLite refuses some of those, and one bad document used to abort a whole index
+     * run — so everything is scrubbed here, before it is stored.
+     */
+    fun sanitise(text: String): String {
+        if (text.isEmpty()) return ""
+        return LONE_SURROGATE.replace(CONTROL.replace(text, " "), "\uFFFD")
+    }
+
     /** Keep at most [maxChars] characters, cutting on a word boundary where possible. */
     fun cap(text: String, maxChars: Int): String {
         if (text.length <= maxChars) return text

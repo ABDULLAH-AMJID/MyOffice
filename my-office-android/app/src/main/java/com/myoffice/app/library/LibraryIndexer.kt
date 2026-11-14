@@ -29,6 +29,28 @@ object LibraryIndexer {
 
     fun isIndexing(): Boolean = indexing
 
+    /** What the chip shows while the index is being built. */
+    data class Progress(
+        val indexed: Int,   // documents whose text is searchable
+        val total: Int,     // documents in the library
+        val pending: Int,   // still queued (text or OCR)
+        val skipped: Int,   // nothing to read (images without OCR engine, vaults, oversized)
+        val failed: Int,    // tried twice, gave up
+    ) {
+        val processed: Int get() = (total - pending).coerceIn(0, total)
+    }
+
+    private fun progressOf(index: LibraryIndex): Progress {
+        val c = index.counts()
+        return Progress(
+            indexed = c.indexed.toInt(),
+            total = c.total.toInt(),
+            pending = c.pending.toInt(),
+            skipped = c.skipped.toInt(),
+            failed = c.failed.toInt(),
+        )
+    }
+
     fun scannedAt(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_SCANNED_AT, 0L)
 
@@ -83,33 +105,35 @@ object LibraryIndexer {
     fun indexPending(
         context: Context,
         maxDocs: Int = 400,
-        onProgress: ((indexed: Int, total: Int, pending: Int) -> Unit)? = null,
+        onProgress: ((Progress) -> Unit)? = null,
     ): Int {
         if (!indexing) indexing = true
         var processed = 0
         try {
             val index = LibraryIndex(context)
+            val attempted = HashSet<String>()
             while (processed < maxDocs) {
-                val batch = index.nextPending(BATCH)
+                val batch = index.nextPending(BATCH).filter { attempted.add(it.path) }
                 if (batch.isEmpty()) break
                 for (doc in batch) {
                     if (processed >= maxDocs) break
-                    val extraction = runCatching { DocumentText.extractDetailed(File(doc.path)) }
-                        .getOrElse { DocumentText.Extraction("") }
-                    if (extraction.text.isBlank() && !extraction.needsOcr) {
-                        index.markSkipped(doc.path, doc.modified)
-                    } else {
-                        index.storeText(doc.path, doc.modified, extraction.text, extraction.needsOcr)
+                    try {
+                        val extraction = DocumentText.extractDetailed(File(doc.path))
+                        if (extraction.text.isBlank() && !extraction.needsOcr) {
+                            index.markSkipped(doc.path, doc.modified)
+                        } else {
+                            index.storeText(doc.path, doc.modified, extraction.text, extraction.needsOcr)
+                        }
+                    } catch (t: Throwable) {
+                        // A single unreadable file used to abort the whole run, which is why the
+                        // counter always froze on the same document. Record and move on.
+                        index.recordFailure(doc.path, doc.modified, t.message ?: t.javaClass.simpleName)
                     }
                     processed++
-                    if (processed % 5 == 0) {
-                        val counts = index.counts()
-                        onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
-                    }
+                    if (processed % 5 == 0) onProgress?.invoke(progressOf(index))
                 }
             }
-            val counts = index.counts()
-            onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
+            onProgress?.invoke(progressOf(index))
         } catch (t: Throwable) {
             // indexing is best-effort; a single unreadable volume must not crash the app
         } finally {
@@ -132,28 +156,29 @@ object LibraryIndexer {
     fun indexOcr(
         context: Context,
         engine: OcrEngine,
-        maxDocs: Int = 40,
-        onProgress: ((indexed: Int, total: Int, pending: Int) -> Unit)? = null,
+        maxDocs: Int = 12,
+        budgetMs: Long = 90_000L,
+        onProgress: ((Progress) -> Unit)? = null,
     ): Int {
         if (indexing) return 0
         indexing = true
         var processed = 0
+        val deadline = System.currentTimeMillis() + budgetMs
         try {
             val index = LibraryIndex(context)
             val batch = index.nextNeedsOcr(maxDocs)
             for (doc in batch) {
-                val text = runCatching { engine.recognise(File(doc.path)) }.getOrElse { "" }
-                if (text.isBlank()) index.markSkipped(doc.path, doc.modified)
-                else index.storeText(doc.path, doc.modified, text, needsOcr = false)
-                processed++
-                if (processed % 3 == 0) {
-                    val counts = index.counts()
-                    onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
+                if (System.currentTimeMillis() > deadline) break   // next pass picks up here
+                try {
+                    val text = engine.recognise(File(doc.path))
+                    if (text.isBlank()) index.markSkipped(doc.path, doc.modified)
+                    else index.storeText(doc.path, doc.modified, text, needsOcr = false)
+                } catch (t: Throwable) {
+                    index.recordFailure(doc.path, doc.modified, t.message ?: t.javaClass.simpleName)
                 }
-            }
-            if (processed > 0) {
-                val counts = index.counts()
-                onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
+                processed++
+                // one update per document: a single scan can take seconds, silence looks like a hang
+                onProgress?.invoke(progressOf(index))
             }
         } catch (_: Throwable) {
             // OCR is best-effort; the text index stays usable either way
@@ -166,14 +191,29 @@ object LibraryIndexer {
     /** Fire-and-forget pass on the library thread (used after a rescan or at startup). */
     fun kickIndexing(
         context: Context,
-        onProgress: ((indexed: Int, total: Int, pending: Int) -> Unit)? = null,
+        onProgress: ((Progress) -> Unit)? = null,
         ocr: OcrEngine? = null,
+        budgetMs: Long = 120_000L,
     ) {
         if (indexing) return
         worker.execute {
-            indexPending(context, onProgress = onProgress)
-            // once the cheap text pass is done, read the scans (if an engine is available)
-            if (ocr != null) indexOcr(context, ocr, onProgress = onProgress)
+            val deadline = System.currentTimeMillis() + budgetMs
+            // Text first, repeatedly: a library of thousands must not need thousands of app starts.
+            while (System.currentTimeMillis() < deadline) {
+                val done = indexPending(context, maxDocs = 200, onProgress = onProgress)
+                val stillPending = LibraryIndex(context).counts().pending
+                if (done == 0 || stillPending == 0L) break
+            }
+            // Then the scans, one bounded pass at a time.
+            if (ocr != null) {
+                while (System.currentTimeMillis() < deadline) {
+                    val left = LibraryIndex(context).countsOcr()
+                    if (left == 0L) break
+                    val done = indexOcr(context, ocr, onProgress = onProgress)
+                    if (done == 0) break
+                }
+            }
+            onProgress?.invoke(progressOf(LibraryIndex(context)))
         }
     }
 

@@ -185,6 +185,8 @@ class AndroidBridge(private val activity: MainActivity) {
             files = index.allFiles()
         } else {
             // Answer from the index immediately; refresh in the background when it is stale.
+            // A rescan now carries the per-file index state forward, so it no longer restarts
+            // indexing from document one (see LibraryIndex.replaceAll).
             LibraryIndexer.ensureScanned(activity, workspaceDir, force = refresh) { }
         }
         if (DeviceLibrary.hasAllFilesAccess(activity)) {
@@ -201,6 +203,8 @@ class AndroidBridge(private val activity: MainActivity) {
             .put("truncated", files.size > limit)
             .put("indexed", count.indexed)
             .put("indexPending", count.pending)
+            .put("indexSkipped", count.skipped)
+            .put("indexFailed", count.failed)
             .put("files", DeviceLibrary.toJson(sliced))
     }
 
@@ -208,10 +212,18 @@ class AndroidBridge(private val activity: MainActivity) {
     private val ocrEngine: LibraryIndexer.OcrEngine? by lazy { OcrEngineHolder.engine(activity) }
 
     /** Push indexing progress to the WebView at a rate a human can follow, not per document. */
-    private fun indexProgressListener(): (Int, Int, Int) -> Unit = { indexed, total, pending ->
+    private fun indexProgressListener(): (LibraryIndexer.Progress) -> Unit = { progress ->
         activity.pushJsEvent(
             "window.__onIndexProgress",
-            JSONObject().put("ok", true).put("indexed", indexed).put("total", total).put("pending", pending).toString()
+            JSONObject()
+                .put("ok", true)
+                .put("indexed", progress.indexed)
+                .put("total", progress.total)
+                .put("pending", progress.pending)
+                .put("skipped", progress.skipped)
+                .put("failed", progress.failed)
+                .put("processed", progress.processed)
+                .toString()
         )
     }
 
@@ -494,6 +506,9 @@ class AndroidBridge(private val activity: MainActivity) {
                         .put("total", count.total)
                         .put("pending", count.pending)
                         .put("needsOcr", count.needsOcr)
+                        .put("skipped", count.skipped)
+                        .put("failed", count.failed)
+                        .put("processed", (count.total - count.pending).coerceAtLeast(0))
                         .put("ocrAvailable", OcrEngineHolder.isAvailable(activity)))
             }
 
@@ -522,6 +537,10 @@ class AndroidBridge(private val activity: MainActivity) {
                     .put("indexed", count.indexed)
                     .put("pending", count.pending)
                     .put("needsOcr", count.needsOcr)
+                    .put("skipped", count.skipped)
+                    .put("failed", count.failed)
+                    .put("processed", (count.total - count.pending).coerceAtLeast(0))
+                    .put("lastError", LibraryIndexer.index(activity).lastError ?: "")
                     .put("ocrAvailable", OcrEngineHolder.isAvailable(activity))
                     .put("running", LibraryIndexer.isIndexing())
                     .put("scannedAt", LibraryIndexer.scannedAt(activity))

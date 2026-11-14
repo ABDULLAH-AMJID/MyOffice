@@ -505,6 +505,12 @@ textarea {
   justify-content: center;
 }
 
+.index-error {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
 /* ---- Full-text search feedback ---- */
 .index-chip {
   flex: 0 0 auto;

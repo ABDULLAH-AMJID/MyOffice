@@ -22,7 +22,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     companion object {
         private const val DB_NAME = "library-index.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
 
         const val TEXT_PENDING = 0
         const val TEXT_DONE = 1
@@ -44,6 +44,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 generation INTEGER NOT NULL DEFAULT 0,
                 text_state INTEGER NOT NULL DEFAULT 0,
                 text_modified INTEGER NOT NULL DEFAULT 0,
+                text_failures INTEGER NOT NULL DEFAULT 0,
                 last_used INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
@@ -65,11 +66,28 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // The index is a cache: rebuilding is always cheaper than migrating it.
-        db.execSQL("DROP TABLE IF EXISTS doc_fts")
-        db.execSQL("DROP TABLE IF EXISTS files")
-        onCreate(db)
+        // v3 added text_failures. Add the column in place so an existing library does not have
+        // to be read again from scratch; only a genuinely broken schema falls back to a rebuild.
+        if (oldVersion < 3) {
+            runCatching {
+                db.execSQL("ALTER TABLE files ADD COLUMN text_failures INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+        if (!hasColumn(db, "files", "text_failures") || !hasColumn(db, "doc_fts", "path")) {
+            // The index is a cache: rebuilding is always cheaper than repairing it.
+            db.execSQL("DROP TABLE IF EXISTS doc_fts")
+            db.execSQL("DROP TABLE IF EXISTS files")
+            onCreate(db)
+        }
     }
+
+    private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
+        runCatching {
+            db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+                while (c.moveToNext()) if (c.getString(1) == column) return true
+            }
+            false
+        }.getOrDefault(false)
 
     // ------------------------------------------------------------------ listing
 
@@ -79,8 +97,14 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         db.beginTransaction()
         try {
             for (file in files) {
-                val previous = previousVersion(db, file.path)
-                val changed = previous == null || previous != file.modified
+                val previous = previousRow(db, file.path)
+                val carry = IndexCarry.stateFor(
+                    previous?.let {
+                        IndexCarry.Previous(it.modified, it.textState, it.textModified, it.failures, it.lastUsed)
+                    },
+                    file.modified,
+                    file.lastUsed,
+                )
                 val values = ContentValues().apply {
                     put("path", file.path)
                     put("name", file.name)
@@ -90,10 +114,15 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                     put("modified", file.modified)
                     put("folder", file.folder)
                     put("generation", generation)
-                    // "Continue where you left off" must survive every rescan
-                    put("last_used", if (previous == null) file.lastUsed else lastUsedOf(db, file.path))
-                    if (previous == null) put("text_state", TEXT_PENDING)
-                    else if (changed) put("text_state", TEXT_PENDING)
+
+                    // CONFLICT_REPLACE deletes and re-inserts the row, so *every* column that is
+                    // not listed here falls back to its DEFAULT — which previously reset the
+                    // whole index to "pending" on every rescan and made indexing start over
+                    // forever. Carry the index state forward explicitly (see IndexCarry).
+                    put("text_state", carry.textState)
+                    put("text_modified", carry.textModified)
+                    put("text_failures", carry.failures)
+                    put("last_used", carry.lastUsed)
                 }
                 db.insertWithOnConflict("files", null, values, SQLiteDatabase.CONFLICT_REPLACE)
             }
@@ -107,9 +136,22 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         }
     }
 
-    private fun lastUsedOf(db: SQLiteDatabase, path: String): Long {
-        db.query("files", arrayOf("last_used"), "path = ?", arrayOf(path), null, null, null).use { c ->
-            return if (c.moveToFirst()) c.getLong(0) else 0L
+    private data class RowState(
+        val modified: Long,
+        val textState: Int,
+        val textModified: Long,
+        val failures: Int,
+        val lastUsed: Long,
+    )
+
+    private fun previousRow(db: SQLiteDatabase, path: String): RowState? {
+        db.query(
+            "files",
+            arrayOf("modified", "text_state", "text_modified", "text_failures", "last_used"),
+            "path = ?", arrayOf(path), null, null, null
+        ).use { c ->
+            if (!c.moveToFirst()) return null
+            return RowState(c.getLong(0), c.getInt(1), c.getLong(2), c.getInt(3), c.getLong(4))
         }
     }
 
@@ -137,11 +179,6 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         return out
     }
 
-    private fun previousVersion(db: SQLiteDatabase, path: String): Long? {
-        db.query("files", arrayOf("modified"), "path = ?", arrayOf(path), null, null, null).use { c ->
-            return if (c.moveToFirst()) c.getLong(0) else null
-        }
-    }
 
     fun allFiles(): List<DeviceFile> {
         val out = ArrayList<DeviceFile>()
@@ -166,15 +203,24 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             "SELECT COUNT(*), " +
                 "SUM(CASE WHEN text_state = $TEXT_DONE THEN 1 ELSE 0 END), " +
                 "SUM(CASE WHEN text_state IN ($TEXT_PENDING, $TEXT_NEEDS_OCR) THEN 1 ELSE 0 END), " +
-                "SUM(CASE WHEN text_state = $TEXT_NEEDS_OCR THEN 1 ELSE 0 END) FROM files",
+                "SUM(CASE WHEN text_state = $TEXT_NEEDS_OCR THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN text_state = $TEXT_SKIPPED THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN text_failures >= 2 THEN 1 ELSE 0 END) FROM files",
             null
         ).use { c ->
             if (!c.moveToFirst()) return Counts(0, 0, 0, 0)
-            return Counts(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3))
+            return Counts(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3), c.getLong(4), c.getLong(5))
         }
     }
 
-    data class Counts(val total: Long, val indexed: Long, val pending: Long, val needsOcr: Long = 0)
+    data class Counts(
+        val total: Long,
+        val indexed: Long,
+        val pending: Long,
+        val needsOcr: Long = 0,
+        val skipped: Long = 0,
+        val failed: Long = 0,
+    )
 
     // ------------------------------------------------------------------ indexing queue
 
@@ -189,7 +235,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         readableDatabase.query(
             "files",
             arrayOf("path", "ext", "modified", "size"),
-            "text_state = ? AND size <= ?",
+            "text_state = ? AND size <= ? AND text_failures < 2",
             arrayOf(TEXT_PENDING.toString(), OfficeTextExtractor.MAX_SOURCE_BYTES.toString()),
             null, null, "modified DESC", limit.toString()
         ).use { c ->
@@ -227,39 +273,62 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         )
     }
 
-    fun storeText(path: String, modified: Long, body: String, needsOcr: Boolean = false) {
+    fun storeText(path: String, modified: Long, body: String, needsOcr: Boolean = false): Boolean {
+        // Broken UTF-16 (lone surrogates) and NUL bytes make SQLite reject the whole statement;
+        // clean them out before anything touches the index.
+        val clean = TextClean.sanitise(body)
         val db = writableDatabase
-        db.beginTransaction()
         try {
-            if (body.isBlank() && needsOcr) {
-                val ocr = ContentValues().apply {
-                    put("text_state", TEXT_NEEDS_OCR)
-                    put("text_modified", modified)
+            db.beginTransaction()
+            try {
+                val values = ContentValues()
+                when {
+                    clean.isBlank() && needsOcr -> {
+                        values.put("text_state", TEXT_NEEDS_OCR)
+                    }
+                    clean.isBlank() -> {
+                        values.put("text_state", TEXT_SKIPPED)
+                    }
+                    else -> {
+                        db.execSQL("DELETE FROM doc_fts WHERE path = ?", arrayOf(path))
+                        db.execSQL("INSERT INTO doc_fts(body, path) VALUES (?, ?)", arrayOf(clean, path))
+                        values.put("text_state", TEXT_DONE)
+                    }
                 }
-                db.update("files", ocr, "path = ?", arrayOf(path))
-            } else if (body.isBlank()) {
-                val skip = ContentValues().apply {
-                    put("text_state", TEXT_SKIPPED)
-                    put("text_modified", modified)
-                }
-                db.update("files", skip, "path = ?", arrayOf(path))
-            } else {
-                db.execSQL("DELETE FROM doc_fts WHERE path = ?", arrayOf(path))
-                db.execSQL(
-                    "INSERT INTO doc_fts(body, path) VALUES (?, ?)",
-                    arrayOf(body, path)
-                )
-                val done = ContentValues().apply {
-                    put("text_state", TEXT_DONE)
-                    put("text_modified", modified)
-                }
-                db.update("files", done, "path = ?", arrayOf(path))
+                values.put("text_modified", modified)
+                if (clean.isNotBlank()) values.put("text_failures", 0)
+                db.update("files", values, "path = ?", arrayOf(path))
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
+            return true
+        } catch (t: Throwable) {
+            // One odd document must not kill the run — count it and move on.
+            recordFailure(path, modified, t.message ?: t.javaClass.simpleName)
+            return false
         }
     }
+
+    /** Remember a failed extraction and retire the document after a second attempt. */
+    fun recordFailure(path: String, modified: Long, reason: String) {
+        runCatching {
+            writableDatabase.execSQL(
+                "UPDATE files SET text_failures = text_failures + 1, text_modified = ?, " +
+                    "text_state = CASE WHEN text_failures + 1 >= 2 THEN $TEXT_SKIPPED ELSE $TEXT_PENDING END " +
+                    "WHERE path = ?",
+                arrayOf<Any>(modified, path)
+            )
+            // make sure a stale body from an older version does not stay searchable
+            writableDatabase.execSQL("DELETE FROM doc_fts WHERE path = ?", arrayOf(path))
+        }
+        lastError = reason
+    }
+
+    /** Most recent extraction problem, shown in diagnostics instead of failing silently. */
+    @Volatile
+    var lastError: String? = null
+        private set
 
     /** Scanned PDFs and photos waiting for the OCR pass. */
     fun nextNeedsOcr(limit: Int): List<PendingDoc> {

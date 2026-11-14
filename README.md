@@ -56,6 +56,37 @@ DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
 
 ---
 
+## What is new in `v1.7.3` — indexing on a real library no longer restarts itself (Android)
+
+Reported on a phone holding **2,806 documents**: the "Reading documents" counter always stopped at the
+same place, around file 52, and started over at the next launch. Two separate defects produced that.
+
+* **A rescan used to erase the index.** Re-scanning storage rewrote every row with SQLite's
+  `CONFLICT_REPLACE`, which deletes the row and inserts a new one; columns that were not written back fell
+  to their defaults. `text_state` was one of them, so every scan — and 1.7.2 scans on every app start —
+  put all 2,806 documents back in the queue. The pass could never finish, so it always looked stuck near
+  the beginning. The index state is now carried across a rescan (`IndexCarry`), and only a file whose
+  timestamp actually changed goes back into the queue.
+* **One unreadable document stopped the whole run.** Extraction had a `catch` around the loop, not around
+  each document, so a single corrupt file silently ended the pass at that file. Every document is now
+  isolated: a failure is counted, retried once on the next run, and then retired as "could not read"
+  instead of blocking the queue. A document that fails twice is never retried again.
+* **The queue now drains in one go.** Each app start works for up to two minutes (text first, then scans
+  in bounded batches of 12 documents / 90 s) instead of stopping after 400 documents, and progress is
+  reported after *every* file, not every fifth.
+* **Honest numbers.** The chip counts processed files — indexed, skipped and failed — so it walks up to
+  `2806/2806` instead of freezing on documents that will never produce text. A quiet "Could not read: N"
+  line appears under the filter row when some files were dropped.
+* **Database migration.** `library-index.db` goes to schema 3 with `text_failures`, added in place with
+  `ALTER TABLE`, so an existing index is not thrown away by the upgrade.
+
+Measured here: 70/70 unit tests green (four of them guard this exact rule — a rescan keeps indexed text,
+an edit re-queues the file, a retired document stays retired, and the "last used" stamp survives).
+
+Windows is unchanged (still `v1.6.6`); OTA descriptor: Android `1.7.3` / `10703`, `min_native_code 10703`.
+
+---
+
 ## What is new in `v1.7.2` — previews, "continue where you left off", deeper PDF search, offline OCR (Android)
 
 The four items left open after 1.7.1, all on the device:

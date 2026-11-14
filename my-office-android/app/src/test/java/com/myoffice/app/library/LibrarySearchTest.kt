@@ -230,6 +230,83 @@ class LibrarySearchTest {
         assertFalse(extraction.needsOcr)
     }
 
+    // ------------------------------------------------------------------ rescan keeps the index
+
+    @Test
+    fun `a rescan of an unchanged file keeps its indexed text`() {
+        val previous = IndexCarry.Previous(
+            modified = 1_700_000_000_000,
+            textState = LibraryIndex.TEXT_DONE,
+            textModified = 1_700_000_000_000,
+            failures = 0,
+            lastUsed = 99,
+        )
+        val state = IndexCarry.stateFor(previous, modified = 1_700_000_000_000, lastUsed = 0)
+        assertEquals(LibraryIndex.TEXT_DONE, state.textState)
+        assertEquals(1_700_000_000_000, state.textModified)
+    }
+
+    @Test
+    fun `editing a file puts it back in the queue`() {
+        val previous = IndexCarry.Previous(
+            modified = 1_700_000_000_000,
+            textState = LibraryIndex.TEXT_DONE,
+            textModified = 1_700_000_000_000,
+            failures = 1,
+            lastUsed = 0,
+        )
+        val state = IndexCarry.stateFor(previous, modified = 1_700_000_500_000, lastUsed = 0)
+        assertEquals(LibraryIndex.TEXT_PENDING, state.textState)
+        assertEquals(0, state.textModified)
+        assertEquals(0, state.failures)
+    }
+
+    @Test
+    fun `a retired document is not revived by a rescan`() {
+        val previous = IndexCarry.Previous(
+            modified = 5,
+            textState = LibraryIndex.TEXT_SKIPPED,
+            textModified = 5,
+            failures = 2,
+            lastUsed = 0,
+        )
+        val state = IndexCarry.stateFor(previous, modified = 5, lastUsed = 0)
+        assertEquals(LibraryIndex.TEXT_SKIPPED, state.textState)
+        assertEquals(2, state.failures)
+    }
+
+    @Test
+    fun `the last used stamp survives a rescan`() {
+        val previous = IndexCarry.Previous(5, LibraryIndex.TEXT_DONE, 5, 0, lastUsed = 1234)
+        assertEquals(1234, IndexCarry.stateFor(previous, 5, lastUsed = 0).lastUsed)
+    }
+
+    // ------------------------------------------------------------------ text hygiene
+
+    @Test
+    fun `nul bytes and control characters never reach the index`() {
+        val dirty = "invoice\u0000 2026\u0007 paid\u001F"
+        val clean = TextClean.sanitise(dirty)
+        assertFalse(clean.contains('\u0000'))
+        assertFalse(clean.contains('\u0007'))
+        assertTrue(clean.contains("invoice"))
+        assertTrue(clean.contains("2026"))
+    }
+
+    @Test
+    fun `broken surrogate pairs are repaired instead of crashing sqlite`() {
+        val clean = TextClean.sanitise("bad \uD800 pair and lone \uDC00 low")
+        assertFalse(clean.contains('\uD800'))
+        assertFalse(clean.contains('\uDC00'))
+        assertTrue(clean.contains("bad"))
+    }
+
+    @Test
+    fun `urdu and emoji survive sanitation untouched`() {
+        val text = "تنخواہ کی رسید 2026 ✅"
+        assertEquals(text, TextClean.sanitise(text))
+    }
+
     // ------------------------------------------------------------------ ranking
 
     @Test
