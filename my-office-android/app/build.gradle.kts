@@ -11,10 +11,12 @@ android {
 
     defaultConfig {
         applicationId = "com.myoffice.app"
+        // Phones only: the OCR engine carries ~7 MB of native code per architecture.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         minSdk = 26
         targetSdk = 35
-        versionCode = 10701
-        versionName = "1.7.1"
+        versionCode = 10702
+        versionName = "1.7.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -35,14 +37,21 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // No R8: shrinking this app needs more heap than a 2 GB build box has, and the
+            // gain is a few MB. Native OCR libraries are compressed below instead.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+
+    packaging {
+        // OCR ships ~15 MB of native code; compressing it keeps the APK downloadable.
+        jniLibs { useLegacyPackaging = true }
     }
 
     compileOptions {
@@ -139,6 +148,10 @@ dependencies {
 
     // Wi-Fi Router USB / NAS FTP & FTPS client
     implementation("commons-net:commons-net:3.11.1")
+
+    // Offline OCR (Tesseract 5 + Leptonica). Reads scanned PDFs and photos on the device;
+    // traineddata for English + Urdu ships in assets/tessdata. Apache-2.0.
+    implementation("com.github.adaptech-cz.tesseract4android:tesseract4android:4.9.0")
 
     // Bit-exact MOVAULT1 / MOVAULTK cryptography (Scrypt N=16384,r=8,p=1 + HKDF-SHA256 + AES-256-GCM via pdfbox-android bcprov)
     testImplementation("junit:junit:4.13.2")

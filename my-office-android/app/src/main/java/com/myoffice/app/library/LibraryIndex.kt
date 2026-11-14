@@ -22,11 +22,12 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     companion object {
         private const val DB_NAME = "library-index.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
 
         const val TEXT_PENDING = 0
         const val TEXT_DONE = 1
         const val TEXT_SKIPPED = 2
+        const val TEXT_NEEDS_OCR = 3
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -42,12 +43,14 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 folder TEXT NOT NULL,
                 generation INTEGER NOT NULL DEFAULT 0,
                 text_state INTEGER NOT NULL DEFAULT 0,
-                text_modified INTEGER NOT NULL DEFAULT 0
+                text_modified INTEGER NOT NULL DEFAULT 0,
+                last_used INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX idx_files_name ON files(name)")
         db.execSQL("CREATE INDEX idx_files_pending ON files(text_state, modified)")
+        db.execSQL("CREATE INDEX idx_files_recent ON files(last_used DESC)")
         createFts(db)
     }
 
@@ -87,6 +90,8 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                     put("modified", file.modified)
                     put("folder", file.folder)
                     put("generation", generation)
+                    // "Continue where you left off" must survive every rescan
+                    put("last_used", if (previous == null) file.lastUsed else lastUsedOf(db, file.path))
                     if (previous == null) put("text_state", TEXT_PENDING)
                     else if (changed) put("text_state", TEXT_PENDING)
                 }
@@ -102,6 +107,36 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         }
     }
 
+    private fun lastUsedOf(db: SQLiteDatabase, path: String): Long {
+        db.query("files", arrayOf("last_used"), "path = ?", arrayOf(path), null, null, null).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0L
+        }
+    }
+
+    /** Remember that a document was opened, for the Recent row and the "last used" sort. */
+    fun touch(path: String, whenMs: Long = System.currentTimeMillis()): Boolean {
+        val values = ContentValues().apply { put("last_used", whenMs) }
+        return writableDatabase.update("files", values, "path = ?", arrayOf(path)) > 0
+    }
+
+    /** The documents that were opened most recently. */
+    fun recent(limit: Int): List<DeviceFile> {
+        val out = ArrayList<DeviceFile>()
+        readableDatabase.query(
+            "files",
+            arrayOf("path", "name", "ext", "kind", "size", "modified", "folder", "last_used"),
+            "last_used > 0", null, null, null, "last_used DESC", limit.toString()
+        ).use { c ->
+            while (c.moveToNext()) {
+                out += DeviceFile(
+                    c.getString(0), c.getString(1), c.getString(2), c.getString(3),
+                    c.getLong(4), c.getLong(5), c.getString(6), c.getLong(7),
+                )
+            }
+        }
+        return out
+    }
+
     private fun previousVersion(db: SQLiteDatabase, path: String): Long? {
         db.query("files", arrayOf("modified"), "path = ?", arrayOf(path), null, null, null).use { c ->
             return if (c.moveToFirst()) c.getLong(0) else null
@@ -111,7 +146,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
     fun allFiles(): List<DeviceFile> {
         val out = ArrayList<DeviceFile>()
         readableDatabase.query(
-            "files", arrayOf("path", "name", "ext", "kind", "size", "modified", "folder"),
+            "files", arrayOf("path", "name", "ext", "kind", "size", "modified", "folder", "last_used"),
             null, null, null, null, "modified DESC"
         ).use { c ->
             while (c.moveToNext()) {
@@ -119,6 +154,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                     path = c.getString(0), name = c.getString(1), ext = c.getString(2),
                     kind = c.getString(3), size = c.getLong(4), modified = c.getLong(5),
                     folder = c.getString(6),
+                    lastUsed = c.getLong(7),
                 )
             }
         }
@@ -127,16 +163,18 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     fun counts(): Counts {
         readableDatabase.rawQuery(
-            "SELECT COUNT(*), SUM(CASE WHEN text_state = $TEXT_DONE THEN 1 ELSE 0 END), " +
-                "SUM(CASE WHEN text_state = $TEXT_PENDING THEN 1 ELSE 0 END) FROM files",
+            "SELECT COUNT(*), " +
+                "SUM(CASE WHEN text_state = $TEXT_DONE THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN text_state IN ($TEXT_PENDING, $TEXT_NEEDS_OCR) THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN text_state = $TEXT_NEEDS_OCR THEN 1 ELSE 0 END) FROM files",
             null
         ).use { c ->
-            if (!c.moveToFirst()) return Counts(0, 0, 0)
-            return Counts(c.getLong(0), c.getLong(1), c.getLong(2))
+            if (!c.moveToFirst()) return Counts(0, 0, 0, 0)
+            return Counts(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3))
         }
     }
 
-    data class Counts(val total: Long, val indexed: Long, val pending: Long)
+    data class Counts(val total: Long, val indexed: Long, val pending: Long, val needsOcr: Long = 0)
 
     // ------------------------------------------------------------------ indexing queue
 
@@ -168,12 +206,19 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
      * extraction ceiling — so the queue actually empties instead of spinning forever.
      */
     private fun retireUnindexable() {
-        val supported = OfficeTextExtractor.SUPPORTED.toList()
-        val placeholders = supported.joinToString(",") { "?" }
-        val args = arrayOf(TEXT_PENDING.toString()) + supported
+        // Scans and photos carry text as pixels: send them to the OCR queue rather than dropping them.
+        val ocr = OfficeTextExtractor.OCR_CANDIDATES.toList()
         writableDatabase.execSQL(
-            "UPDATE files SET text_state = $TEXT_SKIPPED WHERE text_state = ? AND ext NOT IN ($placeholders)",
-            args
+            "UPDATE files SET text_state = $TEXT_NEEDS_OCR " +
+                "WHERE text_state = ? AND ext IN (${ocr.joinToString(",") { "?" }})",
+            arrayOf<Any>(TEXT_PENDING.toString(), *ocr.toTypedArray())
+        )
+
+        val all = OfficeTextExtractor.SUPPORTED + ocr
+        writableDatabase.execSQL(
+            "UPDATE files SET text_state = $TEXT_SKIPPED " +
+                "WHERE text_state = ? AND ext NOT IN (${all.joinToString(",") { "?" }})",
+            arrayOf<Any>(TEXT_PENDING.toString(), *all.toTypedArray())
         )
         val tooBig = arrayOf(TEXT_PENDING.toString(), OfficeTextExtractor.MAX_SOURCE_BYTES.toString())
         writableDatabase.execSQL(
@@ -182,11 +227,17 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         )
     }
 
-    fun storeText(path: String, modified: Long, body: String) {
+    fun storeText(path: String, modified: Long, body: String, needsOcr: Boolean = false) {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            if (body.isBlank()) {
+            if (body.isBlank() && needsOcr) {
+                val ocr = ContentValues().apply {
+                    put("text_state", TEXT_NEEDS_OCR)
+                    put("text_modified", modified)
+                }
+                db.update("files", ocr, "path = ?", arrayOf(path))
+            } else if (body.isBlank()) {
                 val skip = ContentValues().apply {
                     put("text_state", TEXT_SKIPPED)
                     put("text_modified", modified)
@@ -210,6 +261,28 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         }
     }
 
+    /** Scanned PDFs and photos waiting for the OCR pass. */
+    fun nextNeedsOcr(limit: Int): List<PendingDoc> {
+        val out = ArrayList<PendingDoc>()
+        readableDatabase.query(
+            "files", arrayOf("path", "ext", "modified", "size"),
+            "text_state = ? AND size <= ?",
+            arrayOf(TEXT_NEEDS_OCR.toString(), OfficeTextExtractor.MAX_SOURCE_BYTES.toString()),
+            null, null, "modified DESC", limit.toString()
+        ).use { c ->
+            while (c.moveToNext()) {
+                out += PendingDoc(c.getString(0), c.getString(1), c.getLong(2), c.getLong(3))
+            }
+        }
+        return out
+    }
+
+    fun countsOcr(): Long {
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM files WHERE text_state = $TEXT_NEEDS_OCR", null).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0L
+        }
+    }
+
     fun markSkipped(path: String, modified: Long) {
         writableDatabase.update(
             "files",
@@ -229,7 +302,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         if (expression.isEmpty()) return emptyList()
         val out = ArrayList<ContentHit>()
         val sql =
-            "SELECT f.path, f.name, f.ext, f.kind, f.size, f.modified, f.folder, d.body " +
+            "SELECT f.path, f.name, f.ext, f.kind, f.size, f.modified, f.folder, d.body, f.last_used " +
                 "FROM doc_fts d JOIN files f ON f.path = d.path WHERE doc_fts MATCH ? " +
                 "ORDER BY f.modified DESC LIMIT ?"
         runCatching {
@@ -238,7 +311,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                     out += ContentHit(
                         path = c.getString(0), name = c.getString(1), ext = c.getString(2),
                         kind = c.getString(3), size = c.getLong(4), modified = c.getLong(5),
-                        folder = c.getString(6), body = c.getString(7) ?: "",
+                        folder = c.getString(6), body = c.getString(7) ?: "", lastUsed = c.getLong(8),
                     )
                 }
             }
@@ -251,7 +324,7 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     data class ContentHit(
         val path: String, val name: String, val ext: String, val kind: String,
-        val size: Long, val modified: Long, val folder: String, val body: String,
+        val size: Long, val modified: Long, val folder: String, val body: String, val lastUsed: Long = 0,
     )
 
     /** Files whose name or folder contains [query]. */
@@ -259,14 +332,14 @@ class LibraryIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         val out = ArrayList<DeviceFile>()
         val like = "%${query.replace("%", "\\%").replace("_", "\\_")}%"
         readableDatabase.query(
-            "files", arrayOf("path", "name", "ext", "kind", "size", "modified", "folder"),
+            "files", arrayOf("path", "name", "ext", "kind", "size", "modified", "folder", "last_used"),
             "name LIKE ? ESCAPE '\\' OR folder LIKE ? ESCAPE '\\'",
             arrayOf(like, like), null, null, "modified DESC", limit.toString()
         ).use { c ->
             while (c.moveToNext()) {
                 out += DeviceFile(
                     c.getString(0), c.getString(1), c.getString(2), c.getString(3),
-                    c.getLong(4), c.getLong(5), c.getString(6),
+                    c.getLong(4), c.getLong(5), c.getString(6), c.getLong(7),
                 )
             }
         }

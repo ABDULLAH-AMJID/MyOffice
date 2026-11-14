@@ -56,6 +56,31 @@ DOCX, an XLSX and a PPTX can never be confused in Windows Explorer:
 
 ---
 
+## What is new in `v1.7.2` — previews, "continue where you left off", deeper PDF search, offline OCR (Android)
+
+The four items left open after 1.7.1, all on the device:
+
+* **Thumbnails.** PDFs show their first page and photos show themselves in the list — rendered at 240 px,
+  cached on disk (48 MB cap, LRU) and only decoded when a row scrolls into view. A file that cannot be
+  decoded keeps its coloured type badge, so the list never breaks.
+* **Continue where you left off.** The Home screen opens with a horizontal strip of the documents you
+  actually used, newest first, fed by a `last_used` column in the index. Opening anything records it, from
+  the list, the search results, a share intent or the recent strip itself. The strip hides while you search.
+* **Deeper PDF search.** 1.7.1 read the first 30 pages; now every page is read until the character budget
+  (32k) or a 20 s per-file budget runs out, so long manuals are findable instead of only their opening.
+* **Offline OCR (English + Urdu).** Tesseract 5 with Leptonica is compiled into the APK with
+  `eng` + `urd` traineddata. Scanned PDFs and photos are detected automatically (a PDF whose pages carry no
+  text, or an image), read on a background thread, and become searchable like any other document —
+  `Reading scans 12/40` shows the pass running. No network, no Play Services, no upload.
+
+**Cost:** the APK grows from ~7 MB to ~19.8 MB because the OCR engine carries native code for `arm64-v8a`
+and `armeabi-v7a` (compressed inside the APK). Shrinking (R8) is disabled in this build: it needs more heap
+than a 2 GB builder has, and the saving was a few megabytes.
+
+Windows is unchanged (still `v1.6.6`); OTA descriptor: Android `1.7.2` / `10702`, `min_native_code 10702`.
+
+---
+
 ## What is new in `v1.7.1` — search *inside* the documents, not just their names (Android)
 
 **The gap after 1.7.0:** the phone's files were listed, but finding one still meant remembering its *name*.

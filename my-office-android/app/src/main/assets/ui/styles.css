@@ -411,6 +411,100 @@ textarea {
   border-bottom-color: var(--accent);
 }
 
+/* ---- Continue strip (recently opened) ---- */
+.recent-strip {
+  margin: 16px 0 2px;
+}
+
+.recent-strip .section-label {
+  margin: 0 2px 8px;
+}
+
+.recent-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.recent-row::-webkit-scrollbar {
+  display: none;
+}
+
+.recent-card {
+  flex: 0 0 auto;
+  width: 108px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: start;
+  padding: 0;
+}
+
+.recent-card:active {
+  opacity: 0.75;
+}
+
+.recent-card-thumb {
+  height: 76px;
+  width: 100%;
+  background: var(--surface-2, rgba(127, 127, 127, 0.09));
+  background-size: cover;
+  background-position: top center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+}
+
+.recent-card-body {
+  padding: 6px 8px 8px;
+}
+
+.recent-card-name {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--ink);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.recent-card-meta {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
+/* ---- Row thumbnails ---- */
+.file-thumb {
+  width: 44px;
+  height: 52px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  background: var(--surface-2, rgba(127, 127, 127, 0.09));
+  background-size: cover;
+  background-position: top center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.file-thumb .file-badge {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ---- Full-text search feedback ---- */
 .index-chip {
   flex: 0 0 auto;

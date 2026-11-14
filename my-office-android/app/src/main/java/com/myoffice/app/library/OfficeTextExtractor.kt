@@ -29,6 +29,11 @@ object OfficeTextExtractor {
         "docx", "docm", "xlsx", "xlsm", "pptx", "pptm", "csv", "tsv", "txt", "md", "markdown", "html", "htm", "pdf",
     )
 
+    /** Formats that hold text only as pixels: scanned PDFs and images. */
+    val OCR_CANDIDATES: Set<String> = setOf(
+        "pdf", "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff", "heic", "heif",
+    )
+
     fun canExtract(ext: String): Boolean = ext.lowercase() in SUPPORTED
 
     /**

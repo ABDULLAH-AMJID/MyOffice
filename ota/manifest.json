@@ -2,7 +2,7 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.6",
   "version_code": 10606,
-  "date": "2026-11-13T22:54:53Z",
+  "date": "2026-11-14T01:05:59Z",
   "notes": "Windows 1.6.6 — Presentation Scripts (MyOffice Script): Python automation for decks with Alt+F8 — object model (slides, shapes, text, tables, charts, animations, themes), Run/Stop editor, one undo entry per run with full rollback on error, .moscript sidecar next to the deck, .mopkg packaged export, trust approvals per file content, permission-gated file reads, five shipped examples. Android unchanged at 1.6.4.",
   "mandatory": false,
   "min_version": "1.0.0",
@@ -10,16 +10,16 @@
   "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
   "size": 122046531,
   "android": {
-    "version": "1.7.1",
-    "version_code": 10701,
-    "min_native_code": 10701,
+    "version": "1.7.2",
+    "version_code": 10702,
+    "min_native_code": 10702,
     "bundle_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/android-ui.zip",
-    "bundle_sha256": "ec62df042b9de683b993f3a40380e50096b6bb4861cb07b4e623016d6e71a9e3",
-    "bundle_size": 59522,
+    "bundle_sha256": "fd090cc37ffca0001c474f28f8dbe239ec9e67aa3643a1b695784c625b305383",
+    "bundle_size": 61097,
     "bundle_files": 5,
     "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.6/MyOffice_Android.apk",
-    "apk_sha256": "3417eb1d0fc8ae40aaadfb4229fef3c980efeb5a5c6e6df4ca1fcb1255e6af1b",
-    "apk_size": 7053678
+    "apk_sha256": "3e4546fe46000c5f5d3f4b836f3f300c872149bbe70460bbe963faff970ce370",
+    "apk_size": 19843133
   },
   "windows": {
     "version": "1.6.6",
@@ -32,5 +32,5 @@
     "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
     "installer_size": 122046531
   },
-  "signature": "MEYCIQCTWR3wBBOPFe77yd4thqOJaNUx7zQf5M95vma91mlXFAIhAPV8bU+LcLOmEfFE6iCPa2rc79D0xdkwlxlQ+7T3iXzc"
+  "signature": "MEQCIDCwDVM5WNn1k/YBbSkK/ueNnlddHBQOfDXZAdYDG2giAiBYF5N4h+UAmIWct3HQfVHGCzrCPy978jj9OWUKduRfdA=="
 }

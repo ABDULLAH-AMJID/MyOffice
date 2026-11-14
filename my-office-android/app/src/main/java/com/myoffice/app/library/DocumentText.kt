@@ -7,35 +7,64 @@ import java.io.File
 /**
  * Text for the search index, with PDF added on top of the OOXML extractor.
  *
- * PDFs are the one format that needs the Android PDF engine, so this half stays out of the
- * pure extractor (which is unit tested). Page range is capped: a searchable index of the
- * first 30 pages is worth more than a five-minute index pass over a 400-page manual.
+ * PDFs need the bundled PDF engine, so this half stays out of the pure extractor (which is
+ * unit tested). Every page is read until the character budget or the time budget runs out —
+ * a 300-page manual is worth more searchable than a 10-page one. Documents whose pages carry
+ * no text at all are reported as [Extraction.needsOcr] instead of being silently dropped:
+ * that is exactly the scanned paperwork people search for.
  */
 object DocumentText {
 
-    private const val MAX_PDF_PAGES = 30
+    /** Stop reading a single PDF after this long; indexing must never stall the library. */
+    private const val PDF_TIME_BUDGET_MS = 20_000L
 
-    fun extract(file: File): String {
-        if (!file.isFile) return ""
+    /** A page with fewer characters than this is a scan, not a text page. */
+    private const val MIN_TEXT_PER_PAGE = 12
+
+    data class Extraction(val text: String, val needsOcr: Boolean = false)
+
+    fun extract(file: File): String = extractDetailed(file).text
+
+    fun extractDetailed(file: File): Extraction {
+        if (!file.isFile) return Extraction("")
         val ext = file.extension.lowercase()
         if (ext == "pdf") {
-            val pdf = runCatching { extractPdf(file) }.getOrElse { "" }
-            return TextClean.cap(TextClean.normalise(pdf), OfficeTextExtractor.MAX_TEXT_CHARS)
+            return runCatching { extractPdf(file) }.getOrElse { Extraction("", needsOcr = true) }
         }
-        return OfficeTextExtractor.extract(file)
+        if (ext in OfficeTextExtractor.OCR_CANDIDATES) {
+            // images: nothing to parse here, the OCR pass owns them
+            return Extraction("", needsOcr = false)
+        }
+        val text = OfficeTextExtractor.extract(file)
+        return Extraction(text, needsOcr = false)
     }
 
-    private fun extractPdf(file: File): String {
-        if (file.length() > OfficeTextExtractor.MAX_SOURCE_BYTES) return ""
-        return PDDocument.load(file).use { doc ->
+    private fun extractPdf(file: File): Extraction {
+        if (file.length() > OfficeTextExtractor.MAX_SOURCE_BYTES) return Extraction("", needsOcr = true)
+        PDDocument.load(file).use { doc ->
             val pages = doc.numberOfPages
-            if (pages <= 0) return@use ""
-            val stripper = PDFTextStripper().apply {
-                startPage = 1
-                endPage = minOf(pages, MAX_PDF_PAGES)
-                sortByPosition = true
+            if (pages <= 0) return Extraction("")
+
+            val started = System.currentTimeMillis()
+            val out = StringBuilder()
+            val stripper = PDFTextStripper().apply { sortByPosition = true }
+            var textPages = 0
+
+            for (page in 1..pages) {
+                if (out.length >= OfficeTextExtractor.MAX_TEXT_CHARS) break
+                if (System.currentTimeMillis() - started > PDF_TIME_BUDGET_MS) break
+                val pageText = runCatching {
+                    stripper.startPage = page
+                    stripper.endPage = page
+                    stripper.getText(doc)
+                }.getOrDefault("")
+                if (pageText.count { !it.isWhitespace() } >= MIN_TEXT_PER_PAGE) textPages++
+                if (pageText.isNotBlank()) out.append(pageText).append('\n')
             }
-            stripper.getText(doc)
+
+            // Not one page with real text: this is a scan, hand it to OCR.
+            if (textPages == 0 && pages > 0) return Extraction("", needsOcr = true)
+            return Extraction(TextClean.cap(TextClean.normalise(out.toString()), OfficeTextExtractor.MAX_TEXT_CHARS))
         }
     }
 }

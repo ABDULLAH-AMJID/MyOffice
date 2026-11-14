@@ -17,6 +17,7 @@ data class DeviceFile(
     val size: Long,
     val modified: Long,
     val folder: String,        // human-readable parent folder, e.g. "Download/Receipts"
+    val lastUsed: Long = 0L,   // epoch millis of the last time it was opened in MyOffice
 )
 
 object LibrarySorting {

@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Tesseract4Android is published only through JitPack (Apache-2.0 engine, offline OCR)
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

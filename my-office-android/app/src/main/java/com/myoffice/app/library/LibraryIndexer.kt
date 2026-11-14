@@ -94,9 +94,13 @@ object LibraryIndexer {
                 if (batch.isEmpty()) break
                 for (doc in batch) {
                     if (processed >= maxDocs) break
-                    val text = runCatching { DocumentText.extract(File(doc.path)) }.getOrElse { "" }
-                    if (text.isBlank()) index.markSkipped(doc.path, doc.modified)
-                    else index.storeText(doc.path, doc.modified, text)
+                    val extraction = runCatching { DocumentText.extractDetailed(File(doc.path)) }
+                        .getOrElse { DocumentText.Extraction("") }
+                    if (extraction.text.isBlank() && !extraction.needsOcr) {
+                        index.markSkipped(doc.path, doc.modified)
+                    } else {
+                        index.storeText(doc.path, doc.modified, extraction.text, extraction.needsOcr)
+                    }
                     processed++
                     if (processed % 5 == 0) {
                         val counts = index.counts()
@@ -114,13 +118,63 @@ object LibraryIndexer {
         return processed
     }
 
+    /** Anything that can turn a page image into words. Implemented by the OCR engine. */
+    interface OcrEngine {
+        /** Text for [file], or "" when nothing could be read. */
+        fun recognise(file: File): String
+    }
+
+    /**
+     * OCR the documents that carry text only as pixels (scans, photographed receipts).
+     * Deliberately slower than the text pass — it decodes and reads images — so it runs
+     * with a smaller batch and yields back to the text index between documents.
+     */
+    fun indexOcr(
+        context: Context,
+        engine: OcrEngine,
+        maxDocs: Int = 40,
+        onProgress: ((indexed: Int, total: Int, pending: Int) -> Unit)? = null,
+    ): Int {
+        if (indexing) return 0
+        indexing = true
+        var processed = 0
+        try {
+            val index = LibraryIndex(context)
+            val batch = index.nextNeedsOcr(maxDocs)
+            for (doc in batch) {
+                val text = runCatching { engine.recognise(File(doc.path)) }.getOrElse { "" }
+                if (text.isBlank()) index.markSkipped(doc.path, doc.modified)
+                else index.storeText(doc.path, doc.modified, text, needsOcr = false)
+                processed++
+                if (processed % 3 == 0) {
+                    val counts = index.counts()
+                    onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
+                }
+            }
+            if (processed > 0) {
+                val counts = index.counts()
+                onProgress?.invoke(counts.indexed.toInt(), counts.total.toInt(), counts.pending.toInt())
+            }
+        } catch (_: Throwable) {
+            // OCR is best-effort; the text index stays usable either way
+        } finally {
+            indexing = false
+        }
+        return processed
+    }
+
     /** Fire-and-forget pass on the library thread (used after a rescan or at startup). */
     fun kickIndexing(
         context: Context,
         onProgress: ((indexed: Int, total: Int, pending: Int) -> Unit)? = null,
+        ocr: OcrEngine? = null,
     ) {
         if (indexing) return
-        worker.execute { indexPending(context, onProgress = onProgress) }
+        worker.execute {
+            indexPending(context, onProgress = onProgress)
+            // once the cheap text pass is done, read the scans (if an engine is available)
+            if (ocr != null) indexOcr(context, ocr, onProgress = onProgress)
+        }
     }
 
     fun resetTextIndex(context: Context) = LibraryIndex(context).resetTextIndex()

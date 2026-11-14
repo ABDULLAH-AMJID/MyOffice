@@ -38,6 +38,8 @@ import com.myoffice.app.library.DeviceLibrary
 import com.myoffice.app.library.LibraryIndex
 import com.myoffice.app.library.LibraryIndexer
 import com.myoffice.app.library.LibrarySearch
+import com.myoffice.app.library.OcrEngineHolder
+import com.myoffice.app.library.ThumbnailCache
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -186,7 +188,7 @@ class AndroidBridge(private val activity: MainActivity) {
             LibraryIndexer.ensureScanned(activity, workspaceDir, force = refresh) { }
         }
         if (DeviceLibrary.hasAllFilesAccess(activity)) {
-            LibraryIndexer.kickIndexing(activity, indexProgressListener())
+            LibraryIndexer.kickIndexing(activity, indexProgressListener(), ocrEngine)
         }
         val count = index.counts()
         val sliced = if (files.size > limit) files.take(limit) else files
@@ -201,6 +203,9 @@ class AndroidBridge(private val activity: MainActivity) {
             .put("indexPending", count.pending)
             .put("files", DeviceLibrary.toJson(sliced))
     }
+
+    /** The OCR engine the background indexer should use (null when the build has none). */
+    private val ocrEngine: LibraryIndexer.OcrEngine? by lazy { OcrEngineHolder.engine(activity) }
 
     /** Push indexing progress to the WebView at a rate a human can follow, not per document. */
     private fun indexProgressListener(): (Int, Int, Int) -> Unit = { indexed, total, pending ->
@@ -487,7 +492,26 @@ class AndroidBridge(private val activity: MainActivity) {
                         .put("running", LibraryIndexer.isIndexing())
                         .put("indexed", count.indexed)
                         .put("total", count.total)
-                        .put("pending", count.pending))
+                        .put("pending", count.pending)
+                        .put("needsOcr", count.needsOcr)
+                        .put("ocrAvailable", OcrEngineHolder.isAvailable(activity)))
+            }
+
+            // First page of a PDF / the picture itself, for the list rows. Small JPEG data URI.
+            "thumbnail" -> {
+                val file = resolveWorkspaceFile(args.getString("path"))
+                val px = args.optInt("px", 240).coerceIn(96, 640)
+                val uri = ThumbnailCache.dataUri(activity, file, px)
+                JSONObject().put("ok", uri != null).put("dataUri", uri ?: "")
+            }
+
+            // "Continue where you left off" — most recently opened documents on this phone.
+            "listRecent" -> {
+                val limit = args.optInt("limit", 8).coerceIn(1, 30)
+                val recent = LibraryIndexer.index(activity).recent(limit)
+                JSONObject()
+                    .put("ok", true)
+                    .put("files", DeviceLibrary.toJson(recent))
             }
 
             "indexStatus" -> {
@@ -497,13 +521,15 @@ class AndroidBridge(private val activity: MainActivity) {
                     .put("total", count.total)
                     .put("indexed", count.indexed)
                     .put("pending", count.pending)
+                    .put("needsOcr", count.needsOcr)
+                    .put("ocrAvailable", OcrEngineHolder.isAvailable(activity))
                     .put("running", LibraryIndexer.isIndexing())
                     .put("scannedAt", LibraryIndexer.scannedAt(activity))
             }
 
             "reindexText" -> {
                 LibraryIndexer.resetTextIndex(activity)
-                LibraryIndexer.kickIndexing(activity, indexProgressListener())
+                LibraryIndexer.kickIndexing(activity, indexProgressListener(), ocrEngine)
                 JSONObject().put("ok", true)
             }
 
@@ -887,6 +913,8 @@ class AndroidBridge(private val activity: MainActivity) {
     private fun openDocumentNative(args: JSONObject): JSONObject {
         val f = resolveWorkspaceFile(args.getString("path"))
         require(f.isFile) { "Document not found: ${f.path}" }
+        // Any open counts as "last used", whichever entry point the user came through.
+        runCatching { LibraryIndexer.index(activity).touch(f.absolutePath) }
         val ext = f.extension.lowercase()
         val insideWorkspace = f.canonicalPath.startsWith(workspaceDir.canonicalPath)
         val rel = if (insideWorkspace) {

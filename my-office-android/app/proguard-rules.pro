@@ -14,6 +14,13 @@
 -keep class okhttp3.** { *; }
 -keep class okio.** { *; }
 
+# Tesseract reaches its native side by JNI: the class and method names must survive R8.
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
 -dontwarn org.bouncycastle.**
 -dontwarn okhttp3.**
 -dontwarn okio.**

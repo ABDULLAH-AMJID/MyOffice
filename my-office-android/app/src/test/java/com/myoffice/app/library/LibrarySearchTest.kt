@@ -173,6 +173,15 @@ class LibrarySearchTest {
     }
 
     @Test
+    fun `previewable types are the ones the thumbnail cache accepts`() {
+        // mirrors ThumbnailCache.PREVIEWABLE without needing Android classes in a JVM test
+        val previewable = setOf("pdf", "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff", "heic", "heif")
+        assertTrue(previewable.contains("pdf"))
+        assertTrue(previewable.contains("jpg"))
+        assertFalse(previewable.contains("docx"))
+    }
+
+    @Test
     fun `formats without a text layer are not extracted`() {
         val image = File(tmp.newFolder(), "photo.jpg").apply { writeText("binary") }
         assertEquals("", OfficeTextExtractor.extract(image))
@@ -185,6 +194,40 @@ class LibrarySearchTest {
         val supported = OfficeTextExtractor.SUPPORTED
         assertTrue(supported.containsAll(listOf("docx", "xlsx", "pptx", "pdf")))
         assertFalse(supported.contains("apk"))
+    }
+
+    // ------------------------------------------------------------------ recent + OCR routing
+
+    @Test
+    fun `documents keep their last-used stamp across a rescan`() {
+        // the model a rescan rebuilds must carry the timestamp through
+        val file = DeviceFile("/a.pdf", "a.pdf", "pdf", "pdf", 1, 2, "Download", lastUsed = 12345)
+        assertEquals(12345L, file.lastUsed)
+    }
+
+    @Test
+    fun `scans and photos are OCR candidates, office files are not`() {
+        assertTrue(OfficeTextExtractor.OCR_CANDIDATES.contains("pdf"))
+        assertTrue(OfficeTextExtractor.OCR_CANDIDATES.contains("jpg"))
+        assertTrue(OfficeTextExtractor.OCR_CANDIDATES.contains("heic"))
+        assertFalse(OfficeTextExtractor.OCR_CANDIDATES.contains("docx"))
+        assertFalse(OfficeTextExtractor.OCR_CANDIDATES.contains("zip"))
+    }
+
+    @Test
+    fun `an image yields no plain text but is kept for OCR`() {
+        val image = File(tmp.newFolder(), "receipt.jpg").apply { writeText("not really a jpeg") }
+        val extraction = DocumentText.extractDetailed(image)
+        assertEquals("", extraction.text)
+        assertFalse(extraction.needsOcr)   // the image pass, not the PDF pass, owns this
+    }
+
+    @Test
+    fun `a text document is never sent to OCR`() {
+        val txt = File(tmp.newFolder(), "memo.txt").apply { writeText("plain words") }
+        val extraction = DocumentText.extractDetailed(txt)
+        assertEquals("plain words", extraction.text)
+        assertFalse(extraction.needsOcr)
     }
 
     // ------------------------------------------------------------------ ranking

@@ -41,6 +41,15 @@ CONTENT_HITS = [
      "snippet": "…requesting the bank to release the \u0001salary\u0002 transfer for <August>…"},
 ]
 
+RECENT_FILES = [
+    {"path": "/storage/emulated/0/Download/Salary Slip Aug.pdf", "name": "Salary Slip Aug.pdf", "ext": "pdf",
+     "kind": "pdf", "size": 184_320, "modified": NOW - 3600_000, "folder": "Download", "last_used": NOW - 600_000},
+    {"path": "/storage/emulated/0/WhatsApp/Media/Pitch Deck.pptx", "name": "Pitch Deck.pptx", "ext": "pptx",
+     "kind": "slide", "size": 3_120_000, "modified": NOW - 86_400_000, "folder": "WhatsApp/Media", "last_used": NOW - 7_200_000},
+    {"path": "/storage/emulated/0/Download/Expense Sheet.xlsx", "name": "Expense Sheet.xlsx", "ext": "xlsx",
+     "kind": "sheet", "size": 22_400, "modified": NOW - 9000_000, "folder": "Download", "last_used": NOW - 90_000_000},
+]
+
 WORKSPACE_FILES = [
     {"name": "Weekly Report.docx", "rel": "Weekly Report.docx", "ext": "docx", "type": "writer",
      "size": 12_800, "mtime": NOW - 7200_000, "starred": True},
@@ -73,6 +82,8 @@ def run(granted: bool) -> None:
                   listDeviceFiles: { ok: true, granted: %s, scannedAt: %d, fromCache: false, total: %d,
                                      truncated: false, files: %s },
                   requestDeviceAccess: { ok: true, launched: true, granted: false },
+                  listRecent: { ok: true, files: %s },
+                  thumbnail: { ok: false, dataUri: "" },
                   searchDocuments: { ok: true, query: "", names: [], content: %s,
                                      indexing: { running: true, indexed: 5, total: 9, pending: 4 } },
                   saveSettings: { ok: true }
@@ -82,7 +93,7 @@ def run(granted: bool) -> None:
             };
             """ % (json.dumps(BOOTSTRAP), json.dumps(WORKSPACE_FILES), str(granted).lower(),
                    str(granted).lower(), NOW, len(DEVICE_FILES), json.dumps(DEVICE_FILES),
-                   json.dumps(CONTENT_HITS))
+                   json.dumps(RECENT_FILES), json.dumps(CONTENT_HITS))
         )
         page.goto((UI / "index.html").as_uri())
         page.wait_for_timeout(900)

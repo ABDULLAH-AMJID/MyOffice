@@ -111,6 +111,8 @@
       prefTheme: "Appearance",
       themeLight: "Paper Light",
       themeDark: "Carbon Dark",
+      readingScans: "Reading scans",
+      continueTitle: "Continue where you left off",
       indexingDocs: "Reading documents",
       foundInside: "Found inside documents",
       reindexText: "Rebuild search index",
@@ -219,6 +221,8 @@
       prefTheme: "تھیم",
       themeLight: "روشن کاغذ",
       themeDark: "ڈارک موڈ",
+      readingScans: "اسکین پڑھے جا رہے ہیں",
+      continueTitle: "جہاں چھوڑا تھا وہیں سے جاری رکھیں",
       indexingDocs: "دستاویزات پڑھی جا رہی ہیں",
       foundInside: "دستاویزات کے اندر ملا",
       reindexText: "سرچ انڈیکس دوبارہ بنائیں",
@@ -327,6 +331,8 @@
       prefTheme: "दिखावट",
       themeLight: "पेपर लाइट",
       themeDark: "कार्बन डार्क",
+      readingScans: "स्कैन पढ़े जा रहे हैं",
+      continueTitle: "जहाँ छोड़ा था वहीं से जारी रखें",
       indexingDocs: "दस्तावेज़ पढ़े जा रहे हैं",
       foundInside: "दस्तावेज़ों के अंदर मिला",
       reindexText: "खोज सूचकांक फिर बनाएँ",
@@ -400,6 +406,10 @@
     indexInfo: { indexed: 0, total: 0, pending: 0, running: false },
     searchSeq: 0,
     searchTimer: null,
+    thumbs: {},          // path -> data URI (bounded below)
+    thumbOrder: [],
+    recent: [],
+    recentLoaded: 0,
     sortMode: localStorage.getItem(DEVICE_SORT_KEY) || "newest",
     lastUsed: readJson(LAST_USED_KEY, {}),
     files: [],
@@ -597,6 +607,7 @@
     state.deviceLoading = false;
     renderDeviceAccessCard();
     renderFiles();
+    refreshRecent();
     updateHeaderTitle();
   }
 
@@ -738,6 +749,101 @@
     }
   }
 
+  const THUMBABLE = new Set(["pdf", "photos"]);
+
+  /** Keep the data-URI cache small: a long scroll must not grow memory without bound. */
+  function rememberThumb(path, uri) {
+    if (state.thumbs[path]) return;
+    state.thumbs[path] = uri;
+    state.thumbOrder.push(path);
+    while (state.thumbOrder.length > 240) {
+      const old = state.thumbOrder.shift();
+      delete state.thumbs[old];
+    }
+  }
+
+  /**
+   * Thumbnails are fetched per row and only when the row is actually on screen, so a list of
+   * hundreds of PDFs costs nothing until the user scrolls to them.
+   */
+  function hydrateThumbs(scope) {
+    const nodes = scope.querySelectorAll(".file-thumb[data-thumb]");
+    if (!nodes.length) return;
+    const load = async (el) => {
+      if (el.dataset.loaded === "1") return;
+      el.dataset.loaded = "1";
+      const path = el.dataset.thumb;
+      const cached = state.thumbs[path];
+      if (cached) {
+        el.style.backgroundImage = `url("${cached}")`;
+        el.innerHTML = "";
+        return;
+      }
+      try {
+        const res = await nativeCall("thumbnail", { path, px: 240 });
+        if (res && res.dataUri) {
+          rememberThumb(path, res.dataUri);
+          el.style.backgroundImage = `url("${res.dataUri}")`;
+          el.innerHTML = "";
+        }
+      } catch (_) { /* keep the badge */ }
+    };
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            io.unobserve(entry.target);
+            load(entry.target);
+          }
+        });
+      }, { rootMargin: "120px" });
+      nodes.forEach((el) => io.observe(el));
+    } else {
+      nodes.forEach(load);
+    }
+  }
+
+  /** "Continue where you left off" — recent documents straight from the native index. */
+  async function refreshRecent() {
+    const strip = document.getElementById("recentStrip");
+    const row = document.getElementById("recentRow");
+    if (!strip || !row) return;
+    const query = (document.getElementById("searchInput")?.value || "").trim();
+    const show = !query && state.filter === "all";
+    if (!show) {
+      strip.classList.add("hidden");
+      return;
+    }
+    try {
+      const res = await nativeCall("listRecent", { limit: 8 });
+      state.recent = res.files || [];
+    } catch (_) {
+      state.recent = [];
+    }
+    if (!state.recent.length) {
+      strip.classList.add("hidden");
+      return;
+    }
+    strip.classList.remove("hidden");
+    const titleEl = document.getElementById("recentTitle");
+    if (titleEl) titleEl.textContent = tr("continueTitle");
+    row.innerHTML = state.recent.map((f) => {
+      const spec = formatSpec(f.kind, f.ext);
+      const key = esc(f.path).replace(/'/g, "&#39;");
+      return `
+        <button class="recent-card" onclick="App.openFile('${key}')">
+          <div class="recent-card-thumb" data-thumb="${esc(f.path)}">
+            <span class="file-badge" style="color:${spec.fg};background:${spec.bg};width:auto;padding:6px 8px;border-radius:8px">${esc(spec.label)}</span>
+          </div>
+          <div class="recent-card-body">
+            <div class="recent-card-name">${esc(stripKnownExt(f.name) || f.name)}</div>
+            <div class="recent-card-meta">${esc(f.folder || "")}</div>
+          </div>
+        </button>`;
+    }).join("");
+    hydrateThumbs(row);
+  }
+
   /** Snippet markers / become <mark> — only after the text has been escaped. */
   function renderSnippet(raw) {
     return esc(raw)
@@ -759,7 +865,7 @@
         const res = await nativeCall("searchDocuments", { query, limit: 40 });
         if (seq !== state.searchSeq) return;          // a newer keystroke won
         state.textHits = res.content || [];
-        state.indexInfo = res.indexing || state.indexInfo;
+        state.indexInfo = Object.assign({}, state.indexInfo, res.indexing || {});
         renderFiles();
       } catch (_) {
         if (seq === state.searchSeq) { state.textHits = []; renderFiles(); }
@@ -773,7 +879,10 @@
     const info = state.indexInfo || {};
     if (info.running && info.pending > 0) {
       el.classList.remove("hidden");
-      el.textContent = `${tr("indexingDocs")} ${info.indexed}/${info.total}`;
+      // While the cheap text pass is done and scans remain, the label says so — reading a
+      // photograph takes seconds, and a silent pause looks like a hang.
+      const label = (info.needsOcr > 0 && info.ocrAvailable) ? tr("readingScans") : tr("indexingDocs");
+      el.textContent = `${label} ${info.indexed}/${info.total}`;
     } else {
       el.classList.add("hidden");
     }
@@ -801,6 +910,7 @@
     const visible = filtered.slice(0, state.renderLimit);
 
     if (!filtered.length && !state.textHits.length) {
+      // no results: the Continue row (if any) stays visible above the empty state
       listEl.innerHTML = `
         <div class="empty-state">
           ${svgIcon("folder", "ico ico-lg")}
@@ -848,9 +958,14 @@
       const sourceChip = folderLabel ? ` <span class="file-source">${esc(folderLabel)}</span>` : "";
       const metaLine = `${(f.ext || "FILE").toUpperCase()} · ${fmtSize(f.size)} · ${fmtDateShort(f.mtime)}`;
       const key = esc(f.rel).replace(/'/g, "&#39;");
+      const previewable = THUMBABLE.has(f.type);
+      const badgeHtml = `<span class="file-badge" style="color:${spec.fg};background:${spec.bg};width:auto;padding:6px 7px;border-radius:7px">${esc(spec.label)}</span>`;
+      const leading = previewable
+        ? `<div class="file-thumb" data-thumb="${esc(f.rel)}">${badgeHtml}</div>`
+        : `<div class="file-badge" style="color:${spec.fg};background:${spec.bg}">${esc(spec.label)}</div>`;
       return `
         <div class="file-row" data-rel="${esc(f.rel)}" data-source="${f.source}" onclick="App.openFile('${key}')">
-          <div class="file-badge" style="color:${spec.fg};background:${spec.bg}">${esc(spec.label)}</div>
+          ${leading}
           <div class="file-body">
             <div class="file-title">
               ${f.starred ? `<span class="star-mark">${svgIcon("star", "ico ico-sm")}</span>` : ""}
@@ -865,6 +980,7 @@
       `;
     }).join("") + hitsHtml;
     renderIndexChip();
+    hydrateThumbs(listEl);
 
     // Attach natural Android 480ms long-press gesture on file rows
     if (filtered.length > visible.length) {
@@ -967,6 +1083,7 @@
     ov.classList.add("hidden");
     ov.innerHTML = "";
     refreshWorkspace();
+    refreshRecent();
   }
 
   function renderActiveEditor() {
@@ -1552,12 +1669,12 @@
   window.__onIndexProgress = function (raw) {
     let payload = raw;
     if (typeof raw === "string") { try { payload = JSON.parse(raw); } catch (_) { payload = {}; } }
-    state.indexInfo = {
+    state.indexInfo = Object.assign({}, state.indexInfo, {
       indexed: payload.indexed || 0,
       total: payload.total || 0,
       pending: payload.pending || 0,
       running: (payload.pending || 0) > 0
-    };
+    });
     renderIndexChip();
   };
 
@@ -1928,6 +2045,7 @@
       const val = document.getElementById("searchInput").value;
       document.getElementById("btnSearchClear").classList.toggle("hidden", !val);
       renderFiles();
+      refreshRecent();
       scheduleContentSearch(val.trim());
     },
 
@@ -1938,6 +2056,7 @@
       state.textHits = [];
       state.searchSeq++;
       renderFiles();
+      refreshRecent();
     },
 
     reindexText() {
@@ -1952,6 +2071,7 @@
       document.querySelectorAll("#filterRow .filter-tab").forEach((c) => c.classList.remove("active"));
       chipEl.classList.add("active");
       renderFiles();
+      refreshRecent();
     },
 
     async triggerQuickSync() {
@@ -3198,6 +3318,7 @@
         if (granted) refreshDeviceFiles(false);
         else refreshDeviceFiles(false);
       });
+      refreshRecent();
       // Silent startup GitHub OTA check whenever a repo URL is configured
       if (state.config.updateRepoUrl) {
         setTimeout(async () => {
