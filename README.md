@@ -9,8 +9,8 @@
 Every release published to this repository is signed with **ECDSA P-256 + SHA-256** (`ota/manifest.json`) and verified against the pinned release public key embedded inside both native binaries:
 
 1. **Tier 1 — Instant Signed Delta Hot-Patch (`< 1 second`, `0` compile time):**
-   - **Android (`ota/android-ui.zip`, `~49 KB`):** Atomically swaps the entire mobile UI, spreadsheet formula engine, multi-touch gesture physics, Writer/Sheet/Presentation/PDF studio views, and theme system inside `filesDir/ota/active/ui/` with a **Native 4.5s Boot Watchdog + Automatic Rollback**.
-   - **Windows (`ota/windows-patch.zip`, `~692 KB`):** Overrides frozen PyInstaller `app.*` packages via `OtaHotpatchFinder` at `sys.meta_path[0]` with **Boot Crash-Counter Watchdog + Automatic Rollback**.
+   - **Android (`ota/android-ui.zip`, `~60 KB`):** Atomically swaps the entire mobile UI, spreadsheet formula engine, multi-touch gesture physics, Writer/Sheet/Presentation/PDF studio views, and theme system inside `filesDir/ota/active/ui/` with a **Native 4.5s Boot Watchdog + Automatic Rollback**.
+   - **Windows (`ota/windows-patch.zip`, `~1.2 MB`):** Overrides frozen PyInstaller `app.*` packages via `OtaHotpatchFinder` at `sys.meta_path[0]` with **Boot Crash-Counter Watchdog + Automatic Rollback**.
 2. **Tier 2 — Cloud Native Binary Builds (`GitHub Actions`):**
    - Pushing any `v*` tag compiles, tests, signs, and publishes native **`MyOffice_Android.apk`** (`ubuntu-latest`) and **`MyOffice_Setup.exe`** (`windows-latest` + Inno Setup 6) directly to **GitHub Releases**.
 
@@ -25,6 +25,32 @@ Every release published to this repository is signed with **ECDSA P-256 + SHA-25
 | `ota-system/` | ECDSA P-256 release publisher CLI (`publish_release.py`) & pinned SPKI public key (`ota_public_key.b64`) |
 | `ota/` | Live signed OTA channel (`manifest.json`, `android-ui.zip`, `windows-patch.zip`) |
 | `.github/workflows/release-suite.yml` | Automated OTA signature verifier + Cloud Android APK & Windows Setup EXE release pipeline |
+
+---
+
+## What is new in `v1.7.3` (Android) and `v1.6.7` (Windows)
+
+**Android 1.7.3 — library indexing on a 2,806-document phone.** The indexer restarted itself on every rescan:
+`LibraryIndex.replaceAll()` wrote rows with SQLite's `CONFLICT_REPLACE` and never wrote `text_state` back, so each
+scan (1.7.2 scanned on every app start) put all 2,806 documents back in the queue, and a single unreadable document
+aborted the whole run. Index state now survives rescans (`IndexCarry`), a file is re-queued only when its timestamp
+changes, failures retire after two attempts, the queue drains in continuous bounded passes and the counter counts
+every processed file. 70 unit tests, database migrated in place to schema 3.
+
+**Windows 1.6.7 — Presenter View on a projector.** `start_presenter_view()` moved the show window with
+`setGeometry()` and then called `showFullScreen()`; a fresh window lives on the primary screen, so the audience
+output stayed there and the console was maximised on top of it — the projector showed the presenter console. The
+show is now pinned to its own display before going full screen, the split is decided by a tested rule (largest
+external display, remembered), and one display or a mirrored desktop is refused with a clear message instead of
+stacking two windows. Setup trimmed to 116 MB. 352 tests.
+
+| Artefact | Version | Size | SHA-256 |
+|---|---|---|---|
+| `MyOffice_Setup.exe` | 1.6.7 | 116,350,118 B | `8c6936a4eac026a9f0930784c90bd33372bc77626d8add5c0721e9801448b25a` |
+| `MyOffice_Android.apk` | 1.7.3 | 19,847,209 B | `5e3e4d80b27b7dbd996d46d5ef5eaeb4356678b34548dd0e831e99b44f758c22` |
+
+Both are published on the `v1.6.7` release; existing installs receive the signed Tier-1 hot-patch (≈1.2 MB Windows,
+≈60 KB Android UI) through the in-app updater.
 
 ---
 
