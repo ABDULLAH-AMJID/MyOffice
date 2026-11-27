@@ -361,8 +361,14 @@ inside the setup would make it larger (already-compressed data does not shrink a
   Ghostscript, the built-in PDF export, spelling, equations, password protection, `.xls` files, the Photos tools
   and Qt Multimedia (recording).
 
-**On Linux:** `bash installer/wine/build_with_wine.sh 1.2.0` runs the same Windows tools under Wine (see
-`installer/wine/README.md`). The `MyOffice_Setup.exe` delivered with this project was built that way.
+**On Linux:** `bash installer/wine/build_with_wine.sh 1.6.7` runs the same Windows tools under Wine (see
+`installer/wine/README.md`). The `MyOffice_Setup.exe` delivered with this project (116,350,118 bytes,
+SHA-256 `8c6936a4…448b25a`) was built that way, and was verified by installing it silently and running
+`MyOffice.exe --self-test` on the installed tree: 16/16 checks OK (Tesseract + Urdu/English/Hindi data,
+Ghostscript, built-in PDF export, spelling, equations, password protection, `.xls`, Photos, Qt Multimedia,
+file icons/associations, vault, LAN collab + QR, PC↔Android sync, OTA updater).
+
+![Presenter View on two displays](docs/presenter-view-dual-screen.png)
 
 On a Windows 10/11 machine with Python 3.11 x64, [Inno Setup 6](https://jrsoftware.org/isinfo.php) and 7-Zip
 installed, run:
