@@ -171,6 +171,36 @@ def test_smart_diagrams_wordart_and_countdown(qapp, tmp_path):
     w2.set_modified(False)
 
 
+def test_presenter_view_never_shares_a_screen():
+    """Regression: the projector showed the presenter view because both windows were on one screen.
+
+    `start_presenter_view` used to take any secondary screen and then dump the console onto the
+    primary with `showMaximized()`; on a single-screen machine that stacked the two windows, and on
+    a cloned desktop the audience output was simply the console.  The split is now decided by
+    `pick_screens`, which refuses to place both views on one display.
+    """
+    two = [("eDP-1", 1920, 1080, True), ("HDMI-1", 1280, 720, False)]
+    assert PF.pick_screens(two) == (1, 0)                      # projector external, console on the panel
+    assert PF.pick_screens(two, saved="HDMI-1") == (1, 0)
+    three = [("eDP-1", 1920, 1080, True), ("DP-1", 2560, 1440, False), ("HDMI-1", 1280, 720, False)]
+    assert PF.pick_screens(three) == (1, 0)                    # largest external wins the first time
+    assert PF.pick_screens(three, saved="HDMI-1") == (2, 0)    # the remembered projector, even if smaller
+    assert PF.pick_screens(two, saved="UNPLUGGED") == (1, 0)   # stale setting falls back cleanly
+    assert PF.pick_screens([("eDP-1", 1920, 1080, True)]) is None
+    assert PF.pick_screens([]) is None
+
+
+def test_presenter_view_refuses_to_start_on_one_display(qapp, monkeypatch):
+    from app.slide.widget import SlideDocument
+
+    calls = []
+    monkeypatch.setattr(PF, "presenter_screens", lambda: None)
+    monkeypatch.setattr("app.shell.dialogs.show_info", lambda *a, **k: calls.append(a))
+    w = SlideDocument()
+    PF.start_presenter_view(w)
+    assert calls and not getattr(w, "_presenter", None)
+
+
 def test_ink_presenter_view_and_keep_ink(qapp):
     from PySide6.QtGui import QMouseEvent
 

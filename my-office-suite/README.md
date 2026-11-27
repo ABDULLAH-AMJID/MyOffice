@@ -36,6 +36,35 @@ and in the user interface.
 
 ---
 
+## What is new in 1.6.7
+
+**Presenter View now drives a real projector.** A bug report from a live presentation: the audience saw the
+presenter console (next slide, notes, timer, toolbar) instead of the slide. The cause was in
+`start_presenter_view`: the show window was moved with `setGeometry()` and then shown full screen, but
+`showFullScreen()` maximises on whichever screen the window is on — for a fresh top-level window that is the
+primary display. The console was then maximised on the same primary display, so the second window sat *on top
+of* the audience output on one screen, and a two-monitor desk put both views on the monitor while the
+projector mirrored the desktop. There was also no single-display guard at all.
+
+What changed:
+
+* `SlideShow` takes the display it must own and pins the window to it before going full screen
+  (`setScreen` → `windowHandle().setScreen` → `showFullScreen` → geometry correction). The unit tests cover
+  the screen-split rules; the window placement itself needs two physical displays to be seen, so it was
+  verified in a simulated two-screen run (screenshot: `docs/presenter-view-dual-screen.png`).
+* The screen split is a pure, tested function, `pick_screens()`: external display for the audience, primary
+  for the console, largest secondary first on the first run and remembered afterwards (a desk with a second
+  monitor no longer steals the projector role). "Mirror/duplicate" desktops are detected as a single screen
+  and refused, so the projector can never show the console again.
+* One display means no Presenter View: the operator gets PowerPoint's own message instead of two stacked
+  windows. Unplugging the projector mid-show closes the console with the audience window instead of leaving
+  an orphan.
+* The console itself: previews are rendered at the size they are shown at and re-rendered on resize
+  (the first slide used to appear cropped until the window was touched), the control bar and the clock
+  now sit on two rows so `End Show` cannot be pushed off a laptop screen, and the two columns are sized
+  explicitly instead of stretching the notes box past the window edge.
+* 352 tests green, including the new screen-split and single-display tests.
+
 ## File type icons
 
 Every file MyOffice owns carries the **MyOffice brand mark** (the blue "M" letterhead) *and* its own unmistakable

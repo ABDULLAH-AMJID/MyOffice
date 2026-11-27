@@ -35,10 +35,12 @@ def _png(img: QImage) -> bytes:
 class PresenterView(QWidget):
     """Current slide, next slide, speaker notes, timer and clock - follows the running slide show."""
 
-    def __init__(self, doc, show):
+    def __init__(self, doc, show, screen=None):
         super().__init__(None, Qt.Window)
         self.doc, self.show_ = doc, show
         self.setWindowTitle(_t("Presenter View") + " - MyOffice")
+        if screen is not None:
+            self.setScreen(screen)
         self.setStyleSheet("QWidget{background:#202124;color:#e8eaed} QPushButton{background:#3c4043;color:#e8eaed;"
                            "border:none;padding:8px 14px;border-radius:6px} QPushButton:hover{background:#5f6368}"
                            "QTextBrowser{background:#2b2c2f;border:none;font-size:18px;padding:10px}")
@@ -64,7 +66,10 @@ class PresenterView(QWidget):
         side.addWidget(self.notes, 1)
         grid.addWidget(self.current, 0, 0)
         grid.addLayout(side, 0, 1)
+        # Two rows: the controls get the full width, the clock and slide counter sit underneath.
+        # On a 13" laptop the single row used to push "End Show" off the window.
         bar = QHBoxLayout()
+        bar.setSpacing(6)
         for label, slot in ((_t("\u25c0 Previous"), show.prev_step), (_t("Next \u25b6"), show.next_step),
                             (_t("Pen"), lambda: show.set_ink_tool("pen")),
                             (_t("Laser"), lambda: show.set_ink_tool("laser")),
@@ -73,41 +78,83 @@ class PresenterView(QWidget):
                             (_t("Pause Timer"), self._toggle_timer), (_t("Reset Timer"), self._reset_timer),
                             (_t("End Show"), self._end)):
             b = QPushButton(label)
+            b.setStyleSheet("padding:6px 10px")
             b.clicked.connect(slot)
             bar.addWidget(b)
             if label == _t("Pause Timer"):
                 self.pause_btn = b
         bar.addStretch(1)
-        bar.addWidget(self.counter)
-        bar.addSpacing(16)
-        bar.addWidget(self.timer_label)
-        bar.addSpacing(16)
-        bar.addWidget(self.clock)
+        status = QHBoxLayout()
+        status.addStretch(1)
+        status.addWidget(self.counter)
+        status.addSpacing(16)
+        status.addWidget(self.timer_label)
+        status.addSpacing(16)
+        status.addWidget(self.clock)
         grid.addLayout(bar, 1, 0, 1, 2)
-        grid.setColumnStretch(0, 3)
-        grid.setColumnStretch(1, 2)
-        grid.setRowStretch(0, 1)
+        grid.addLayout(status, 2, 0, 1, 2)
+        # Explicit proportions.  Letting both cells stretch made the current-slide label wider than
+        # the console and the notes box spill past the right edge once the window was resized.
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 0)
+        grid.setColumnMinimumWidth(0, 0)
+        self._grid = grid
+        self._side = side
+        self._place_columns()
+        # Size the console before rendering: the two preview labels used to be filled while the
+        # window was still at its minimum size, so the first slide was drawn small and clipped
+        # until the operator touched something.
+        self.resize(1180, 720)
         self._elapsed = 0
         self._running = True
+        self._resize_timer = QTimer(self, singleShot=True, interval=180, timeout=self._rerender)
         self._tick = QTimer(self, interval=1000, timeout=self._second)
         self._tick.start()
         show.positionChanged.connect(self.refresh)
         show.finished.connect(self.close)
+        # A projector unplugged mid-show usually takes the audience window with it; close the console
+        # instead of leaving an orphan window driving nothing.
+        if getattr(show, "target_screen", None) is not None:
+            try:
+                show.target_screen.geometryChanged.connect(self._audience_screen_changed)
+            except (RuntimeError, TypeError):
+                pass
         self._second()
         self.refresh(show.pos, show.step)
+
+    @staticmethod
+    def _fit(label: QLabel, image: QImage) -> None:
+        """Show ``image`` as large as the label allows, letterboxed on the console background.
+
+        Scaling with ``KeepAspectRatio`` inside the label rect cuts nothing only when the label is
+        already the slide's aspect ratio; the old code also measured the label *before* the layout
+        ran, which is why the current slide appeared cropped and stale.
+        """
+        box = label.contentsRect().size()
+        if box.width() < 8 or box.height() < 8 or image.isNull():
+            label.setPixmap(QPixmap.fromImage(image) if not image.isNull() else QPixmap())
+            return
+        pm = QPixmap.fromImage(image).scaled(box, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        canvas = QPixmap(box)
+        canvas.fill(QColor("#202124"))
+        p = QPainter(canvas)
+        p.drawPixmap((box.width() - pm.width()) // 2, (box.height() - pm.height()) // 2, pm)
+        p.end()
+        label.setPixmap(canvas)
 
     def refresh(self, pos: int, step: int):
         from app.slide.canvas import render_slide
 
         pres = self.doc.pres
         idx = self.show_.slides[pos]
-        w = max(400, self.current.width())
-        self.current.setPixmap(QPixmap.fromImage(render_slide(pres, pres.slides[idx], w)).scaled(
-            self.current.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        # Render at the size it will be shown at: 2x for a crisp preview on a HiDPI panel.
+        target = self.current.contentsRect().size()
+        width = max(640, min(2560, target.width() * 2 or 1280))
+        self._fit(self.current, render_slide(pres, pres.slides[idx], width))
         if pos + 1 < len(self.show_.slides):
             nidx = self.show_.slides[pos + 1]
-            self.next.setPixmap(QPixmap.fromImage(render_slide(pres, pres.slides[nidx], 420)).scaled(
-                self.next.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            nwidth = max(320, min(1280, self.next.contentsRect().width() * 2 or 420))
+            self._fit(self.next, render_slide(pres, pres.slides[nidx], nwidth))
             self.next_caption.setText(_t("Next slide"))
         else:
             self.next.clear()
@@ -116,12 +163,44 @@ class PresenterView(QWidget):
         self.notes.setPlainText(notes or _t("(no notes for this slide)"))
         self.counter.setText(_t("Slide {0} of {1}").format(pos + 1, len(self.show_.slides)))
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._rerender()
+
+    def _rerender(self):
+        self.refresh(self.show_.pos, self.show_.step)
+
+    def _place_columns(self):
+        """Give the slide column 62% of the width and the side column the rest, in slide ratio."""
+        margin = self._grid.contentsMargins().left() + self._grid.contentsMargins().right() + self._grid.horizontalSpacing()
+        avail = max(480, self.width() - margin)
+        left = int(avail * 0.62)
+        right = max(260, avail - left)
+        self._grid.setColumnMinimumWidth(0, left)
+        self._grid.setColumnMinimumWidth(1, right)
+        self._grid.invalidate()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._place_columns()
+        timer = getattr(self, "_resize_timer", None)  # resize events can arrive during construction
+        if timer is not None and not timer.isActive():
+            timer.start()
+
     def _second(self):
         if self._running:
             self._elapsed += 1
         e = self._elapsed
         self.timer_label.setText(f"{e // 3600:02d}:{e % 3600 // 60:02d}:{e % 60:02d}")
         self.clock.setText(datetime.now().strftime("%H:%M"))
+
+    def _audience_screen_changed(self):
+        if getattr(self.show_, "target_screen", None) is None:
+            return
+        # Qt removes a disconnected screen from QApplication.screens(); the show is then pinned to a
+        # display that no longer exists and the console has nothing to accompany.
+        if self.show_.target_screen not in QApplication.screens():
+            self.close()
 
     def _toggle_timer(self):
         self._running = not self._running
@@ -157,25 +236,80 @@ class _Key:
         return Qt.NoModifier
 
 
+def pick_screens(displays, saved: str = "") -> tuple[int, int] | None:
+    """Which display gets the audience output, and which gets the console.
+
+    ``displays`` is ``[(name, width, height, is_primary), ...]``.  Returns
+    ``(projector_index, console_index)`` or ``None`` when there is only one display, because the
+    audience output and the presenter console must never share a screen — that is exactly how a
+    projector ends up showing the presenter view.
+
+    The choice is remembered (``saved`` is the display name): on a desk with two monitors the
+    "second" screen is usually the monitor, not the projector wheeled in for the meeting.
+    """
+    if len(displays) < 2:
+        return None
+    primary = next((i for i, d in enumerate(displays) if d[3]), 0)
+    others = [i for i in range(len(displays)) if i != primary]
+    for i in others:
+        if saved and displays[i][0] == saved:
+            return i, primary
+    # Largest secondary display first: in nearly every setup that is the projector or TV.
+    projector = max(others, key=lambda i: displays[i][1] * displays[i][2])
+    return projector, primary
+
+
+def presenter_screens():
+    """Map :func:`pick_screens` onto the live QScreen objects, remembering the choice."""
+    from PySide6.QtCore import QSettings
+
+    screens = QApplication.screens()
+    primary = QApplication.primaryScreen()
+    if not screens or primary is None:
+        raise RuntimeError("no screen")
+    settings = QSettings("MyOffice", "Slideshow")
+    saved = str(settings.value("projectorScreen", "") or "")
+    choice = pick_screens(
+        [(s.name(), s.geometry().width(), s.geometry().height(), s is primary) for s in screens], saved
+    )
+    if choice is None:
+        return None
+    projector, console = screens[choice[0]], screens[choice[1]]
+    settings.setValue("projectorScreen", projector.name())
+    return projector, console
+
+
 def start_presenter_view(w):
     from app.slide.show import SlideShow
 
     w.canvas.commit_text_edits()
     w._sync_all()
-    show = SlideShow(w, w.current)
-    screens = QApplication.screens()
-    pv = PresenterView(w, show)
-    if len(screens) > 1:
-        primary = QApplication.primaryScreen()
-        other = next(s for s in screens if s is not primary)
-        show.setGeometry(other.geometry())
-        show.showFullScreen()
-        pv.setGeometry(primary.availableGeometry())
-        pv.showMaximized()
-    else:  # one screen: the audience view in a window that can be moved to a projector later
-        show.resize(960, 540)
-        show.show()
-        pv.showMaximized()
+    pair = presenter_screens()
+    if pair is None:
+        # One display cannot show two different full-screen views.  Stacking them is what made the
+        # projector mirror the presenter view, so the show is not started at all — the operator is
+        # told to connect the second display, exactly like PowerPoint's Presenter View.
+        from app.shell.dialogs import show_info
+
+        show_info(w, _t("Presenter View"),
+                  _t("Presenter View needs a second display: one screen for the audience and one for you.\n"
+                     "Connect the projector or monitor, then start Presenter View again."))
+        return
+    projector, console = pair
+    show = getattr(w, "_show", None)
+    if show is None or not show.isVisible():
+        # no audience window yet: open one on the projector (never on the console screen)
+        show = SlideShow(w, w.current, screen=projector)
+    else:
+        # A plain F5 show is already running: put it on the audience display instead of opening a
+        # second one that would fight for the same screen.
+        show.move_to_screen(projector)
+    pv = PresenterView(w, show, screen=console)
+    show.start()
+    pv.setGeometry(console.availableGeometry().adjusted(40, 40, -40, -40))
+    pv.showMaximized()
+    pv.raise_()
+    pv.activateWindow()
     w._show, w._presenter = show, pv
 
 

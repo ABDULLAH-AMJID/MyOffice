@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import (QEasingCurve, QParallelAnimationGroup, QPointF, QPropertyAnimation, QRectF,
                             QSequentialAnimationGroup, Qt, QTimer, QVariantAnimation, Signal)
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
-from PySide6.QtWidgets import QGraphicsView, QLabel, QMenu, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QGraphicsView, QLabel, QMenu, QMessageBox, QWidget
 
 from app.services.i18n import _t
 from app.slide.canvas import build_scene
@@ -212,8 +212,15 @@ class SlideShow(QWidget):
     positionChanged = Signal(int, int)    # slide position (among shown slides), animation step
     finished = Signal()
 
-    def __init__(self, doc, start: int = 0):
+    def __init__(self, doc, start: int = 0, screen=None):
         super().__init__(None, Qt.Window)
+        # Which physical display the show belongs on.  The window is created on that screen from
+        # the first frame, so a projector run never flashes on the laptop panel and the audience
+        # output is never the one the presenter view happens to be covering.
+        self.target_screen = screen if screen is not None else QApplication.primaryScreen()
+        if self.target_screen is not None:
+            self.setScreen(self.target_screen)
+            self.setGeometry(self.target_screen.geometry())
         self.doc = doc
         self.pres = doc.pres
         self.setWindowTitle(_t("Slide Show"))
@@ -598,8 +605,41 @@ class SlideShow(QWidget):
     def wheelEvent(self, e):
         self.next_step() if e.angleDelta().y() < 0 else self.prev_step()
 
-    def start(self):
+    def _pin_to_screen(self, screen) -> None:
+        """Full screen on one exact display.
+
+        ``showFullScreen()`` maximises on whichever screen the window currently sits on, and a fresh
+        top-level window can be created on the primary display before Qt applies ``setScreen``.  That
+        is how the audience output used to land on the presenter's monitor and the console ended up
+        on the projector.  Move the real window handle first, then go full screen, then correct the
+        geometry once more in case the window manager re-placed it.
+        """
+        self.setScreen(screen)
+        self.setGeometry(screen.geometry())
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setScreen(screen)
         self.showFullScreen()
+        self.setGeometry(screen.geometry())
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not screen:
+            handle.setScreen(screen)
+            self.setGeometry(screen.geometry())
+
+    def move_to_screen(self, screen) -> None:
+        """Re-target a running show (used when Presenter View starts over an F5 show)."""
+        self.target_screen = screen
+        if self.isFullScreen():
+            self.showNormal()
+        self._pin_to_screen(screen)
+        self.activateWindow()
+        self.setFocus()
+
+    def start(self):
+        if self.target_screen is not None:
+            self._pin_to_screen(self.target_screen)
+        else:
+            self.showFullScreen()
         self.activateWindow()
         self.setFocus()
 

@@ -1,11 +1,11 @@
 {
   "schema": "myoffice-ota-v2",
-  "version": "1.6.6",
-  "version_code": 10606,
-  "date": "2026-11-14T16:50:49Z",
-  "notes": "Android 1.7.3 — the library index no longer restarts itself: rescanning storage keeps the text that was already read, a single unreadable document can no longer freeze the run, failures retire after two attempts, and the progress counter reports every processed file. Verified on a 2,806-document library. Windows unchanged at 1.6.6.",
+  "version": "1.6.7",
+  "version_code": 10607,
+  "date": "2026-11-27T21:03:41Z",
+  "notes": "Windows 1.6.7 — Presenter View fix: the audience display now owns the projector. The show window is pinned to the external screen before it goes full screen, the projector is chosen by a tested rule (largest external display, remembered afterwards) instead of 'any non-primary screen', and a single display or a mirrored desktop is refused with a clear message instead of stacking the console over the slides. Unplugging the projector mid-show closes the console with the show; console previews render at full size. Android 1.7.3 (library indexing fix) is unchanged.",
   "mandatory": false,
-  "min_version": "1.0.0",
+  "min_version": "1.6.6",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
   "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
   "size": 122046531,
@@ -22,15 +22,15 @@
     "apk_size": 19847209
   },
   "windows": {
-    "version": "1.6.6",
-    "min_binary_version": "1.0.0",
+    "version": "1.6.7",
+    "min_binary_version": "1.6.6",
     "patch_url": "https://raw.githubusercontent.com/ABDULLAH-AMJID/MyOffice/main/ota/windows-patch.zip",
-    "patch_sha256": "247e6e5ba0e864eb13a9aac45c2a917ac99617afee4dd37c60a9c8602d96ea6e",
-    "patch_size": 1209853,
+    "patch_sha256": "f95f2268b458e00eaf332962f232a4cf331889ecba8e4d1e74007ff2534f9240",
+    "patch_size": 1212753,
     "patch_files": 174,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
     "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
     "installer_size": 122046531
   },
-  "signature": "MEYCIQCSeoYmsKW/nZ18LHHNwBjg8dQ22j8P0m8px0vWoW3ncwIhAK/KloprFHvIWplumHPVtU3I8KDI3H5lq6oUH68MC7U2"
+  "signature": "MEUCIQCPbyxpWoXvMeK9CAfNvTcrLyRAVZb9C5ybylvX7Bp8EgIgXZ4XG9qbRqFG37BMns8KrA+ee4UjToS01soFwPfZPsc="
 }
