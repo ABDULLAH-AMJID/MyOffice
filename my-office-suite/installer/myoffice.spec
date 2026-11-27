@@ -131,6 +131,20 @@ def _keep_data(entry) -> bool:
 
 
 a.binaries = [b for b in a.binaries if _keep(b)]
+
+# ---- size: drop what MyOffice cannot use, so the installer stays near 120 MB ------------------
+# `pymupdf.layout` is excluded above, but PyInstaller still collected its 51 MB of ONNX models (layout +
+# table detection used by pymupdf4llm) and the 6.7 MB C++ development headers.  Measured: dropping them takes
+# the frozen tree from 295 MB to 244 MB and the setup from 154 MB back to ~116 MB, without touching anything
+# the app calls.  `mupdfcpp64.dll` stays: `_extra.pyd` imports it and every PDF fails to open without it
+# (verified with a Windows smoke test).
+def _drop_dead_weight(entry) -> bool:
+    dest = entry[0].replace("\\", "/")
+    return not dest.startswith("pymupdf/layout/") and not dest.startswith("pymupdf/mupdf-devel/")
+
+
+a.binaries = [b for b in a.binaries if _drop_dead_weight(b)]
+a.datas = [d for d in a.datas if _drop_dead_weight(d)]
 a.datas = [d for d in a.datas if _keep_data(d)]
 a.datas = [d for d in a.datas
            if not d[0].replace("\\", "/").startswith(("PySide6/Qt/qml", "PySide6/qml"))

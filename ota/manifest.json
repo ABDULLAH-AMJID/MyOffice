@@ -2,13 +2,13 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.7",
   "version_code": 10607,
-  "date": "2026-11-27T21:03:41Z",
-  "notes": "Windows 1.6.7 — Presenter View fix: the audience display now owns the projector. The show window is pinned to the external screen before it goes full screen, the projector is chosen by a tested rule (largest external display, remembered afterwards) instead of 'any non-primary screen', and a single display or a mirrored desktop is refused with a clear message instead of stacking the console over the slides. Unplugging the projector mid-show closes the console with the show; console previews render at full size. Android 1.7.3 (library indexing fix) is unchanged.",
+  "date": "2026-11-27T22:02:12Z",
+  "notes": "Windows 1.6.7 — Presenter View fix: the audience display now owns the projector. The show window is pinned to the external screen before it goes full screen, the projector is chosen by a tested rule (largest external display, remembered afterwards), and a single display or a mirrored desktop is refused with a clear message instead of stacking the console over the slides. Unplugging the projector mid-show closes the console with the show; console previews render at full size and the toolbar no longer overflows. The setup now ships 116 MB (own ONNX models we never load are no longer bundled). Android 1.7.3: library indexing fix.",
   "mandatory": false,
   "min_version": "1.6.6",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-  "sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
-  "size": 122046531,
+  "sha256": "8c6936a4eac026a9f0930784c90bd33372bc77626d8add5c0721e9801448b25a",
+  "size": 116350118,
   "android": {
     "version": "1.7.3",
     "version_code": 10703,
@@ -29,8 +29,8 @@
     "patch_size": 1212753,
     "patch_files": 174,
     "installer_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
-    "installer_sha256": "e1f58a96a08854b2d3aebf92514be8c2896e6ac5c86958c3ca4e539fad8f52ce",
-    "installer_size": 122046531
+    "installer_sha256": "8c6936a4eac026a9f0930784c90bd33372bc77626d8add5c0721e9801448b25a",
+    "installer_size": 116350118
   },
-  "signature": "MEUCIQCPbyxpWoXvMeK9CAfNvTcrLyRAVZb9C5ybylvX7Bp8EgIgXZ4XG9qbRqFG37BMns8KrA+ee4UjToS01soFwPfZPsc="
+  "signature": "MEUCICXKOwCzPW1mMWy5lA5tt6HWCF+M/+8horFuNZNElzy/AiEAyf+DHVyKA2sbDbLEeo7mzAunK4uil/I+WoWee9xIpJs="
 }
