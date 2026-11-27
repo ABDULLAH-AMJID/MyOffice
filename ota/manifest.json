@@ -2,8 +2,8 @@
   "schema": "myoffice-ota-v2",
   "version": "1.6.7",
   "version_code": 10607,
-  "date": "2026-11-27T22:02:12Z",
-  "notes": "Windows 1.6.7 — Presenter View fix: the audience display now owns the projector. The show window is pinned to the external screen before it goes full screen, the projector is chosen by a tested rule (largest external display, remembered afterwards), and a single display or a mirrored desktop is refused with a clear message instead of stacking the console over the slides. Unplugging the projector mid-show closes the console with the show; console previews render at full size and the toolbar no longer overflows. The setup now ships 116 MB (own ONNX models we never load are no longer bundled). Android 1.7.3: library indexing fix.",
+  "date": "2026-11-27T22:55:38Z",
+  "notes": "Windows 1.6.7 — Presenter View fix: the audience display now owns the projector. The show window is pinned to the external screen before it goes full screen, the projector is chosen by a tested rule (largest external display, remembered afterwards), and a single display or a mirrored desktop is refused with a clear message instead of stacking the console over the slides. Unplugging the projector mid-show closes the console with the show; console previews render at full size and the toolbar no longer overflows. The setup is now 116 MB. Android 1.7.3: library indexing no longer restarts on every rescan.",
   "mandatory": false,
   "min_version": "1.6.6",
   "url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/latest/download/MyOffice_Setup.exe",
@@ -17,7 +17,7 @@
     "bundle_sha256": "99a63c50b24c85a01abca713bee279b878580538697bc06f3990137951298bfa",
     "bundle_size": 61493,
     "bundle_files": 5,
-    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.6/MyOffice_Android.apk",
+    "apk_url": "https://github.com/ABDULLAH-AMJID/MyOffice/releases/download/v1.6.7/MyOffice_Android.apk",
     "apk_sha256": "5e3e4d80b27b7dbd996d46d5ef5eaeb4356678b34548dd0e831e99b44f758c22",
     "apk_size": 19847209
   },
@@ -32,5 +32,5 @@
     "installer_sha256": "8c6936a4eac026a9f0930784c90bd33372bc77626d8add5c0721e9801448b25a",
     "installer_size": 116350118
   },
-  "signature": "MEUCICXKOwCzPW1mMWy5lA5tt6HWCF+M/+8horFuNZNElzy/AiEAyf+DHVyKA2sbDbLEeo7mzAunK4uil/I+WoWee9xIpJs="
+  "signature": "MEUCIQC57kemZYzanU5fboebvLjzorMHa8Z6n3iA/n3u5ZH1ugIgCcyyFFV40IW1M8MJUwjdZu+y1kxbytwH1b0w7PbIkBc="
 }
